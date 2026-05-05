@@ -587,7 +587,7 @@ _applyScanMode();
 window.toggleScanMode = toggleScanMode;
 
 // ── Caméra scan (zxing-wasm — ZXing C++ compilé en WebAssembly) ────────
-let _camModeContinuous = JSON.parse(localStorage.getItem('prisme_scan_continuous') ?? 'true');
+let _camModeContinuous = JSON.parse(localStorage.getItem('prisme_scan_continuous') ?? 'false');
 _applyScanCamMode();
 
 function toggleScanCamMode() {
