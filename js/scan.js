@@ -1083,7 +1083,30 @@ if ('serviceWorker' in navigator) {
 // ── Init ───────────────────────────────────────────────────────────────
 _loadActions();
 _loadCustomEan();
-loadData();
+loadData().then(async () => {
+  // Auto-fetch data/scan.json si pas de données en cache
+  if (_articles.size === 0) {
+    try {
+      const r = await fetch('data/scan.json', { cache: 'no-cache' });
+      if (r.ok) {
+        const data = await r.json();
+        if (data?.articles?.length) {
+          _loadFromScanPayload(data);
+          _saveScanToIDB(data);
+          document.getElementById('refCount').textContent = _articles.size;
+          document.getElementById('content').innerHTML = `
+            <div class="empty">
+              <div class="icon">✅</div>
+              <p><strong>${_articles.size} refs</strong> chargees<br>
+              Agence : ${_esc(data.store || '—')}<br>
+              <span style="font-size:10px;color:var(--t3)">Scannez un code article</span></p>
+            </div>`;
+          console.log('[Scan] Auto-loaded data/scan.json:', _articles.size, 'refs');
+        }
+      }
+    } catch (_) { /* pas de data/scan.json, import manuel */ }
+  }
+});
 
 // Charger EAN + refs fournisseur depuis le catalogue (indépendant de l'IDB)
 fetch('js/catalogue-marques.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(data => {
