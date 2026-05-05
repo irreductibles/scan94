@@ -3,9 +3,6 @@
 // Lit finalData depuis IndexedDB PRISME, lookup par code article.
 // Zéro dépendance sur main.js / state.js / store.js.
 
-// URL API Apps Script — si configuree, charge les articles ZZAT018 depuis Drive
-const API_URL = '';  // Ex: 'https://script.google.com/macros/s/XXXX/exec'
-
 const IDB_NAME = 'PRISME';
 const IDB_VERSION = 2;
 const IDB_STORE = 'session';
@@ -1087,42 +1084,7 @@ if ('serviceWorker' in navigator) {
 _loadActions();
 _loadCustomEan();
 loadData().then(async () => {
-  // Auto-fetch : API Apps Script → data/scan.json → import manuel
-  if (_articles.size === 0 && API_URL) {
-    try {
-      document.getElementById('content').innerHTML = `<div class="empty"><div class="icon">⏳</div><p>Chargement depuis Drive...</p></div>`;
-      const r = await fetch(API_URL + '?action=articles', { cache: 'no-cache' });
-      if (r.ok) {
-        const data = await r.json();
-        if (data?.articles?.length) {
-          // Mapper champs ZZAT018 vers champs scan
-          const mapped = { store: data.store, articles: data.articles.map(a => ({
-            code: a.code, libelle: a.libelle, famille: a.famille, sousFamille: a.sousFamille,
-            emplacement: a.emplacement, statut: a.statut, stockActuel: a.stock,
-            ancienMin: a.min, ancienMax: a.max, nouveauMin: 0, nouveauMax: 0,
-            classeRot: a.classeRot, W: Math.round((a.moyVte12 || 0) * 12),
-            moyVte12: a.moyVte12
-          }))};
-          _loadFromScanPayload(mapped);
-          _saveScanToIDB(mapped);
-          document.getElementById('content').innerHTML = `
-            <div class="empty">
-              <div class="icon">✅</div>
-              <p><strong>${_articles.size} refs</strong> chargees<br>
-              Agence : ${_esc(data.store || '—')}<br>
-              <span style="font-size:10px;color:var(--t3)">${_esc(data.file || '')} · ${new Date(data.date).toLocaleDateString('fr-FR')}</span></p>
-            </div>`;
-          console.log('[Scan] API Drive:', _articles.size, 'refs');
-          // Charger EAN depuis API en arrière-plan
-          fetch(API_URL + '?action=ean', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(eanObj => {
-            if (!eanObj || !Object.keys(eanObj).length) return;
-            _eanMap = new Map(Object.entries(eanObj));
-            console.log('[Scan] EAN API:', _eanMap.size);
-          }).catch(() => {});
-        }
-      }
-    } catch (e) { console.warn('[Scan] API Drive failed:', e); }
-  }
+  // Auto-fetch data/scan.json si pas de données en cache
   if (_articles.size === 0) {
     try {
       const r = await fetch('data/scan.json', { cache: 'no-cache' });
