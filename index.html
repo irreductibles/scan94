@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<title>Scan</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f172a;--card:#1e293b;--border:#475569;--t1:#f8fafc;--t2:#cbd5e1;--t3:#94a3b8;--act:#60a5fa;--green:#4ade80;--red:#f87171;--amber:#fbbf24;--violet:#a78bfa}
+body{font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--t1);min-height:100dvh;display:flex;flex-direction:column}
+.header{padding:6px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
+.header h1{font-size:14px;font-weight:800;flex:1}
+.header .badge{font-size:11px;padding:2px 7px;border-radius:99px;background:rgba(96,165,250,.2);color:var(--act)}
+.action-badge{display:none;align-items:center;justify-content:center;min-width:24px;height:24px;border-radius:99px;background:var(--amber);color:#000;font-size:12px;font-weight:800;cursor:pointer;padding:0 6px;border:none}
+.search-wrap{padding:6px 12px;position:sticky;top:0;z-index:10;background:var(--bg)}
+.search-wrap input{width:100%;padding:10px 44px 10px 42px;padding-right:74px;font-size:16px;font-weight:600;border-radius:10px;border:2px solid var(--border);background:var(--card);color:var(--t1);outline:none;letter-spacing:1px;font-variant-numeric:tabular-nums}
+.search-wrap input:focus{border-color:var(--act)}
+.search-wrap input::placeholder{color:var(--t3);font-weight:400;font-size:14px;letter-spacing:0}
+.clear-btn{position:absolute;right:28px;top:50%;transform:translateY(-50%);font-size:20px;color:var(--t3);cursor:pointer;display:none;background:none;border:none;padding:4px}
+.content{flex:1;padding:0 16px 24px;overflow-y:auto}
+.empty{text-align:center;padding:60px 20px;color:var(--t2)}
+.empty .icon{font-size:52px;margin-bottom:16px}
+.empty p{font-size:15px;line-height:1.6}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;animation:slideUp .2s ease}
+@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.card-head{padding:10px 14px 8px;border-bottom:1px solid var(--border)}
+.card-head .code{font-size:14px;color:var(--t2);font-weight:600;letter-spacing:1px}
+.card-head .lib{font-size:16px;font-weight:700;margin-top:3px;line-height:1.3}
+.hero{display:flex;border-bottom:1px solid var(--border)}
+.hero-cell{flex:1;text-align:center;padding:8px 6px 6px}
+.hero-cell+.hero-cell{border-left:1px solid var(--border)}
+.hero-val{font-size:24px;font-weight:900;font-variant-numeric:tabular-nums}
+.hero-emp{font-size:15px;word-break:break-all}
+.hero-label{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-top:1px}
+.sq-banner{display:flex;align-items:center;gap:6px;padding:8px 14px;font-weight:700;font-size:14px}
+.sq-icon{font-size:16px}
+.sq-label{flex:1}
+.sq-classif{font-size:11px;text-transform:uppercase;letter-spacing:.5px;opacity:.8}
+.verdict{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;margin-top:8px}
+.verdict-bar{text-align:center;padding:6px 14px;font-size:13px;font-weight:700}
+.detail-grid{display:flex;flex-wrap:wrap;padding:6px 14px 10px;gap:4px 16px}
+.d-cell{display:flex;align-items:baseline;gap:5px;font-size:12px}
+.d-label{color:var(--t2)}
+.d-val{font-weight:700;font-variant-numeric:tabular-nums}
+.d-erp{text-decoration:line-through;color:var(--red);opacity:.8}
+.action-zone{padding:6px 12px 10px}
+.action-btn{width:100%;padding:10px 14px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;color:#fff}
+.action-surstock{background:var(--violet)}
+.action-rupture{background:var(--red)}
+.action-erp{background:var(--act)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border)}
+.grid .cell{padding:14px 16px;background:var(--card)}
+.cell .label{font-size:12px;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.cell .val{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
+.cell .sub{font-size:12px;color:var(--t2);margin-top:2px}
+.scan-count{font-size:13px;color:var(--t2);text-align:center;padding:8px}
+.notfound{text-align:center;padding:40px 20px}
+.notfound .icon{font-size:40px;margin-bottom:12px}
+.notfound p{font-size:15px;color:var(--t2)}
+.flash{animation:flash .15s}
+@keyframes flash{0%,100%{opacity:1}50%{opacity:.5}}
+.vitesse-tag{font-size:11px;color:var(--violet);font-weight:600;margin-left:4px}
+.btn-back{padding:4px 8px;font-size:11px;color:var(--act);background:none;border:none;cursor:pointer;text-decoration:underline}
+.scan-mode-btn{position:absolute;left:28px;top:50%;transform:translateY(-50%);font-size:18px;background:none;border:none;cursor:pointer;padding:4px;opacity:.5}
+.scan-mode-btn.active{opacity:1;filter:drop-shadow(0 0 4px var(--act))}
+.action-btn-secondary{width:100%;padding:14px;border-radius:12px;border:1px solid var(--border);font-size:15px;font-weight:600;cursor:pointer;color:var(--t1);background:transparent;margin-top:6px}
+.cam-btn{position:absolute;right:56px;top:50%;transform:translateY(-50%);font-size:28px;background:none;border:none;cursor:pointer;padding:6px;color:var(--t2)}
+.cam-btn.active{color:var(--act);filter:drop-shadow(0 0 4px var(--act))}
+#camZone{display:none;padding:0}
+#camZone.open{display:flex;flex-direction:column;position:fixed;top:0;left:0;right:0;bottom:0;z-index:100;background:#000}
+#camReader{flex:1;position:relative;overflow:hidden}
+#camReader video{width:100%;height:100%;object-fit:cover}
+#camSheet{position:absolute;bottom:0;left:0;right:0;background:var(--bg);border-radius:16px 16px 0 0;transition:max-height .3s ease;max-height:155px;overflow:hidden;z-index:3;padding-bottom:env(safe-area-inset-bottom,0)}
+#camSheet.expanded{max-height:85vh;overflow-y:auto}
+#camSheet .sheet-handle{width:36px;height:4px;border-radius:2px;background:var(--border);margin:8px auto 0}
+#camSheet .pick-header{display:flex;justify-content:space-between;align-items:center;padding:10px 16px 8px;font-size:14px}
+#camSheet .pick-header span{font-weight:700;color:var(--t1)}
+#camSheet .pick-header button{background:none;border:none;color:var(--red);font-size:12px;font-weight:700;cursor:pointer}
+#camSheet .pick-items{padding:0 16px}
+#camSheet .pick-item{display:flex;align-items:center;padding:10px 0;border-top:1px solid var(--border)}
+#camSheet .pick-item .pi-info{flex:1}
+#camSheet .pick-item .pi-code{font-size:16px;font-weight:800;color:var(--t1);font-variant-numeric:tabular-nums}
+#camSheet .pick-item .pi-lib{font-size:11px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65vw}
+#camSheet .pick-item .pi-badge{font-size:13px;font-weight:700}
+#camSheet .resume-btn{display:block;width:calc(100% - 32px);margin:16px auto;padding:14px;border-radius:12px;border:none;background:#fff;color:#000;font-size:15px;font-weight:800;cursor:pointer;text-align:center;letter-spacing:.5px}
+#camClose{position:absolute;top:12px;left:12px;width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,.6);border:none;color:#fff;font-size:20px;cursor:pointer;z-index:2}
+#camOverlay{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:1}
+#camOverlay .frame{position:absolute;left:50%;top:50%;width:76%;aspect-ratio:1;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.5);border-radius:16px;box-shadow:0 0 0 9999px rgba(0,0,0,.45)}
+#camOverlay .corner{position:absolute;width:28px;height:28px;border-color:#fff;border-style:solid;border-width:0}
+#camOverlay .c-tl{top:-2px;left:-2px;border-top-width:4px;border-left-width:4px;border-top-left-radius:16px}
+#camOverlay .c-tr{top:-2px;right:-2px;border-top-width:4px;border-right-width:4px;border-top-right-radius:16px}
+#camOverlay .c-bl{bottom:-2px;left:-2px;border-bottom-width:4px;border-left-width:4px;border-bottom-left-radius:16px}
+#camOverlay .c-br{bottom:-2px;right:-2px;border-bottom-width:4px;border-right-width:4px;border-bottom-right-radius:16px}</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Scan</h1>
+  <button id="scanModeToggle" onclick="toggleScanCamMode()" style="padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--t2);font-size:11px;font-weight:700;cursor:pointer">Continu</button>
+  <span class="badge" id="refCount">&mdash;</span>
+  <button class="action-badge" id="actionBadge" onclick="showActions()">0</button>
+  <button id="invBtn" onclick="toggleInventaire()" style="padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--t2);font-size:11px;font-weight:700;cursor:pointer">Inventaire</button>
+  <button onclick="purgeCache()" style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px" title="Purger le cache">&#x1F5D1;&#xFE0F;</button>
+</div>
+
+<div class="search-wrap">
+  <input type="text" id="scanInput" placeholder="Code, libelle ou emplacement..." autofocus autocomplete="off">
+  <button class="cam-btn" id="camBtn" onclick="toggleCamera()">&#x1F4F7;</button>
+  <button class="clear-btn" id="clearBtn" onclick="clearScan()">&#x2715;</button>
+  <button class="scan-mode-btn" id="scanModeBtn" onclick="toggleScanMode()">&#x2328;&#xFE0F;</button>
+</div>
+
+<div id="camZone">
+  <div id="camReader"></div>
+</div>
+
+<div id="importZone" style="padding:8px 16px;display:none">
+  <label style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;border:1px dashed var(--border);cursor:pointer;font-size:12px;color:var(--t2)">
+    <span style="font-size:18px">&#x1F4C1;</span>
+    <span>Charger fichier Scan (.json)</span>
+    <input type="file" accept=".json" onchange="importScanFile(this)" style="display:none">
+  </label>
+</div>
+<div class="content" id="content">
+  <div class="empty">
+    <div class="icon">&#x1F4E6;</div>
+    <p>Scannez un code article<br>ou tapez-le au clavier</p>
+    <p style="margin-top:16px;font-size:11px">Chargez un fichier <strong>scan.json</strong> pour alimenter le cache.</p>
+  </div>
+</div>
+
+<div class="scan-count" id="scanCount"></div>
+<script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.0.3/dist/iife/reader/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@undecaf/zbar-wasm@0.11.0/dist/index.js"></script>
+<script src="js/scan.js?v=20260506u"></script>
+</body>
+</html>
