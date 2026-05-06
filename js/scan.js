@@ -1072,6 +1072,7 @@ async function purgeCache() {
       const tx = db.transaction(IDB_STORE, 'readwrite');
       tx.objectStore(IDB_STORE).delete('scan-import');
       tx.objectStore(IDB_STORE).delete('scan');
+      tx.objectStore(IDB_STORE).delete('current');
       await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
     } finally {
       try { db.close(); } catch (_) {}
@@ -1095,7 +1096,8 @@ async function purgeCache() {
   document.getElementById('refCount').textContent = '—';
   document.getElementById('scanCount').textContent = '';
   _updateActionBadge();
-  _showImportFallback();
+  // Recharger pour re-fetch le fichier JSON
+  location.reload();
 }
 window.purgeCache = purgeCache;
 
