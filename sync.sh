@@ -8,10 +8,11 @@ cp "$SRC/js/catalogue-marques.json" "$DST/js/catalogue-marques.json"
 
 # Generer index.json pour lister les fichiers data/
 if [ -d "$DST/data" ]; then
-  (cd "$DST/data" && ls -1 *.json 2>/dev/null | python3 -c "import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))" > index.json)
+  (cd "$DST/data" && ls -1 *.json 2>/dev/null | grep -v index.json | python3 -c "import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))" > index.json)
 fi
 
 cd "$DST"
+git pull --rebase 2>/dev/null
 git add -A
 git diff --cached --quiet && echo "Rien a mettre a jour." && exit 0
 git commit -m "sync scan $(date +%Y-%m-%d)"
