@@ -484,7 +484,7 @@ function _renderCard(code) {
 
   el.innerHTML = `<div class="card flash">
     <div class="card-head">
-      <div class="code">${_esc(r.code)}<span style="float:right;font-size:12px;color:var(--t3)">${_esc(r.famille || '')}</span></div>
+      <div class="code">${_esc(r.code)}<button onclick="navigator.clipboard.writeText('${r.code}');this.textContent='OK';setTimeout(()=>this.textContent='📋',600)" style="background:none;border:none;cursor:pointer;font-size:12px;margin-left:6px;padding:2px 4px">📋</button><span style="float:right;font-size:12px;color:var(--t3)">${_esc(r.famille || '')}</span></div>
       <div class="lib">${_esc(r.libelle || '—')}</div>
     </div>
     <div class="hero">
