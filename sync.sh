@@ -11,6 +11,10 @@ if [ -d "$DST/data" ]; then
   (cd "$DST/data" && ls -1 *.json 2>/dev/null | grep -v index.json | python3 -c "import sys,json; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))" > index.json)
 fi
 
+# Cache-bust auto : maj version dans index.html
+V="v=$(date +%Y%m%d%H%M)"
+sed -i '' "s|js/scan.js?v=[^\"]*|js/scan.js?$V|" "$DST/index.html"
+
 cd "$DST"
 git pull --rebase 2>/dev/null
 git add -A
