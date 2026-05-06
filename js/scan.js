@@ -68,6 +68,9 @@ async function loadData() {
         return;
       }
 
+      // Priorité 2 : fichier data/prisme-scan-XX.json (plus fiable que session PRISME)
+      if (await _tryFetchScanJson()) return;
+
       // Fallback rétrocompat : anciennes sessions sans clé 'scan'
       let dataEffective = data;
       if (!dataEffective?.finalData?.length) {
@@ -99,7 +102,6 @@ async function loadData() {
             }
             r._reseauAgences = reseauCount;
             r.prixMoyenReseau = totalQte > 0 ? Math.round(totalCA / totalQte * 100) / 100 : null;
-            // Coût unitaire = (CA - VMB) / Qté → marge réelle au prix moyen
             if (totalQte > 0 && totalCA > 0) {
               const coutUnit = (totalCA - totalVMB) / totalQte;
               r._coutUnitaire = Math.round(coutUnit * 100) / 100;
@@ -135,8 +137,6 @@ async function loadData() {
         console.log('[Scan] ✅ ' + _articles.size + ' articles restaurés depuis IDB (scan-import)');
         return;
       }
-      // Fallback : fetch data/scan.json
-      if (await _tryFetchScanJson()) return;
       // Fallback : localStorage (fiable sur Safari iOS)
       if (_loadFromLS()) return;
       _showImportFallback();

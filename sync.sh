@@ -1,7 +1,7 @@
 #!/bin/bash
 # Sync scan depuis PRISME principal → repo collegue
 SRC="$HOME/Prisme"
-DST="$HOME/Downloads/prisme-scan"
+DST="$HOME/prisme-scan94"
 
 cp "$SRC/js/scan.js" "$DST/js/scan.js"
 cp "$SRC/js/catalogue-marques.json" "$DST/js/catalogue-marques.json"
