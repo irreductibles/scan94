@@ -10,6 +10,7 @@ const IDB_STORE = 'session';
 let _articles = null;   // Map<code, article>
 let _eanMap = null;     // Map<ean, code>
 let _refMap = null;     // Map<refFournisseur, code>
+let _agenceLabel = '';  // ex: 'AG93' extrait du nom de fichier
 let _catData = null;    // catalogue-marques.json brut {M, F, S, A, E}
 let _customEanMap = new Map(); // Map<ean, code> — associations terrain
 const _CUSTOM_EAN_KEY = 'prisme_custom_ean';
@@ -165,6 +166,10 @@ async function _tryFetchScanJson() {
           const data = await resp.json();
           if (data.articles?.length) {
             _loadFromScanPayload(data);
+            // Extraire le code agence du nom de fichier (prisme-scan-AG93.json → AG93)
+            const m = scanFile.match(/prisme-scan-(.+)\.json/);
+            if (m) _agenceLabel = m[1];
+            _updateAgenceHeader();
             console.log('[Scan] ' + _articles.size + ' articles chargés depuis data/' + scanFile);
             await _saveScanToIDB(data);
             return true;
@@ -191,10 +196,17 @@ function _loadFromScanPayload(data) {
     _eanMap = new Map();
     for (const [ean, code] of Object.entries(data.ean)) _eanMap.set(ean, code);
   }
+  if (data.store && !_agenceLabel) _agenceLabel = data.store;
   _applyCorrections();
   document.getElementById('refCount').textContent = _articles.size + ' refs';
+  _updateAgenceHeader();
   document.getElementById('importZone').style.display = 'none';
   _scheduleSaveToLS();
+}
+
+function _updateAgenceHeader() {
+  const h = document.querySelector('.header h1');
+  if (h) h.textContent = _agenceLabel ? 'Scan · ' + _agenceLabel : 'Scan';
 }
 
 // ── localStorage fallback (Safari iOS purge IDB) ─────────────────────
@@ -985,13 +997,13 @@ function _liveSearch(q) {
     return `<div onclick="selectArticle('${r.code}')" style="padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px"
       class="hover-row">
       <div style="flex:1;min-width:0">
-        <div style="font-size:10px;color:var(--border);letter-spacing:.5px">${_esc(r.code)}</div>
+        <div style="font-size:11px;color:var(--t2);letter-spacing:.5px">${_esc(r.code)}</div>
         <div style="font-size:13px;font-weight:700;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_esc(r.libelle || '—')}</div>
-        <div style="font-size:11px;color:#7dd3fc;font-weight:600;margin-top:1px">${_esc(r.emplacement || '—')}<span style="color:var(--border);font-weight:400;margin-left:6px">${r.famille ? _esc(r.famille) : ''}</span></div>
+        <div style="font-size:11px;color:#7dd3fc;font-weight:600;margin-top:1px">${_esc(r.emplacement || '—')}<span style="color:var(--t3);font-weight:400;margin-left:6px">${r.famille ? _esc(r.famille) : ''}</span></div>
       </div>
       <div style="text-align:right;flex-shrink:0;min-width:44px">
         <div style="font-size:18px;font-weight:900;color:${stock > 0 ? 'var(--green)' : 'var(--red)'}; line-height:1">${stock}</div>
-        <div style="font-size:9px;color:var(--border);margin-top:2px">${mm}</div>
+        <div style="font-size:9px;color:var(--t3);margin-top:2px">${mm}</div>
       </div>
       <div class="verdict" style="background:${v.bg};color:${v.color};font-size:9px;padding:2px 6px;white-space:nowrap;min-width:52px;text-align:center">${vLabel}</div>
     </div>`;
