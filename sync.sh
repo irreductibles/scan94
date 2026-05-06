@@ -20,5 +20,4 @@ git pull --rebase 2>/dev/null
 git add -A
 git diff --cached --quiet && echo "Rien a mettre a jour." && exit 0
 git commit -m "sync scan $(date +%Y-%m-%d)"
-git push
-echo "Sync OK"
+git push && echo "Sync OK" || echo "ERREUR: push échoué, relancer sync.sh"
