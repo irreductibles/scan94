@@ -61,27 +61,31 @@ async function loadData() {
       });
       console.log('[Scan] IDB scan:', data ? ('articles=' + (data.articles?.length || 0) + ' finalData=' + (data.finalData?.length || 0)) : 'vide');
 
-      // Priorité : toujours tenter le fichier JSON d'abord (source de vérité)
-      if (await _tryFetchScanJson()) return;
+      // Vérifier si une session PRISME live existe (clé 'current')
+      const tx0 = db.transaction(IDB_STORE, 'readonly');
+      const currentData = await new Promise((resolve, reject) => {
+        const r = tx0.objectStore(IDB_STORE).get('current');
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+      });
+      const hasLiveSession = currentData?.finalData?.length > 0;
+      console.log('[Scan] IDB current:', hasLiveSession ? 'finalData=' + currentData.finalData.length : 'vide');
 
-      // Fallback : payload scan en IDB
+      // Si session PRISME live → la préférer (PC avec données fraîches)
+      // Sinon → fichier JSON (scan93/94 collègues)
+      if (!hasLiveSession) {
+        if (await _tryFetchScanJson()) return;
+      }
+
+      // Payload scan en IDB
       if (data?.articles?.length) {
         _loadFromScanPayload(data);
         console.log('[Scan] ✅ ' + _articles.size + ' articles restaurés depuis IDB (scan)');
         return;
       }
 
-      // Fallback rétrocompat : anciennes sessions sans clé 'scan'
-      let dataEffective = data;
-      if (!dataEffective?.finalData?.length) {
-        const tx0 = db.transaction(IDB_STORE, 'readonly');
-        dataEffective = await new Promise((resolve, reject) => {
-          const r = tx0.objectStore(IDB_STORE).get('current');
-          r.onsuccess = () => resolve(r.result);
-          r.onerror = () => reject(r.error);
-        });
-        console.log('[Scan] IDB current:', dataEffective ? 'finalData=' + (dataEffective.finalData?.length || 0) : 'vide');
-      }
+      // Session PRISME live
+      let dataEffective = hasLiveSession ? currentData : null;
 
       if (dataEffective?.finalData?.length) {
         _articles = new Map();
