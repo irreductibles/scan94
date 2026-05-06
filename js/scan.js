@@ -1112,9 +1112,10 @@ fetch('js/catalogue-marques.json', { cache: 'no-cache' }).then(r => r.ok ? r.jso
   }
   if (data.R) {
     _refMap = new Map();
-    for (const [ref, code] of Object.entries(data.R)) {
+    for (const [rawCode, ref] of Object.entries(data.R)) {
+      const code = rawCode.replace(/^0+/, '').padStart(6, '0');
       _refMap.set(ref, code);
-      // Enrichir l'article avec la ref fournisseur pour la recherche multi-mots
+      // Enrichir l'article avec la ref fournisseur
       const art = _articles?.get(code);
       if (art) art._refFourn = ref;
     }
