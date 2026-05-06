@@ -152,7 +152,27 @@ async function loadData() {
 }
 
 async function _tryFetchScanJson() {
+  // Chercher data/prisme-scan-XX.json (listing index.json) ou fallback data/scan.json
   try {
+    // Tenter le listing des fichiers via index.json
+    const idxResp = await fetch('data/index.json', { cache: 'no-cache' }).catch(() => null);
+    if (idxResp?.ok) {
+      const files = await idxResp.json();
+      const scanFile = files.find(f => f.startsWith('prisme-scan-') && f.endsWith('.json'));
+      if (scanFile) {
+        const resp = await fetch('data/' + scanFile, { cache: 'no-cache' });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.articles?.length) {
+            _loadFromScanPayload(data);
+            console.log('[Scan] ' + _articles.size + ' articles chargés depuis data/' + scanFile);
+            await _saveScanToIDB(data);
+            return true;
+          }
+        }
+      }
+    }
+    // Fallback : nom fixe
     const resp = await fetch('data/scan.json', { cache: 'no-cache' });
     if (!resp.ok) return false;
     const data = await resp.json();
@@ -484,10 +504,6 @@ function _renderCard(code) {
         <span class="d-label">ERP actuel</span>
         <span class="d-val d-erp">${erpMin} / ${erpMax}</span>
       </div>` : ''}
-      <div class="d-cell">
-        <span class="d-label">Marge réseau</span>
-        <span class="d-val">${txMarge}</span>
-      </div>
       <div class="d-cell">
         <span class="d-label">ABC/FMR</span>
         <span class="d-val">${r.abcClass || '—'}-${r.fmrClass || '—'}${r.matriceVerdict ? ' · ' + _esc(r.matriceVerdict) : ''}</span>
