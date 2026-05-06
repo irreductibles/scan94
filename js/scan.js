@@ -62,13 +62,18 @@ async function loadData() {
       console.log('[Scan] IDB scan:', data ? ('articles=' + (data.articles?.length || 0) + ' finalData=' + (data.finalData?.length || 0)) : 'vide');
 
       // Nouveau format : payload scan minimal {articles,ean,...}
+      // Vérifier si le fichier JSON distant est plus récent que le cache IDB
+      const idbTimestamp = data?.timestamp || 0;
       if (data?.articles?.length) {
+        // Tenter le fichier JSON — s'il est plus récent, il remplace le cache
+        const freshLoaded = await _tryFetchScanJson(idbTimestamp);
+        if (freshLoaded) return;
         _loadFromScanPayload(data);
         console.log('[Scan] ✅ ' + _articles.size + ' articles restaurés depuis IDB (scan)');
         return;
       }
 
-      // Priorité 2 : fichier data/prisme-scan-XX.json (plus fiable que session PRISME)
+      // Priorité 2 : fichier data/prisme-scan-XX.json
       if (await _tryFetchScanJson()) return;
 
       // Fallback rétrocompat : anciennes sessions sans clé 'scan'
@@ -152,7 +157,7 @@ async function loadData() {
   }
 }
 
-async function _tryFetchScanJson() {
+async function _tryFetchScanJson(idbTimestamp = 0) {
   // Chercher data/prisme-scan-XX.json (listing index.json) ou fallback data/scan.json
   try {
     // Tenter le listing des fichiers via index.json
@@ -165,12 +170,16 @@ async function _tryFetchScanJson() {
         if (resp.ok) {
           const data = await resp.json();
           if (data.articles?.length) {
+            // Si le cache IDB est plus récent, ne pas écraser
+            if (idbTimestamp && data.timestamp && data.timestamp <= idbTimestamp) {
+              console.log('[Scan] Fichier JSON pas plus récent que IDB, skip');
+              return false;
+            }
             _loadFromScanPayload(data);
-            // Extraire le code agence du nom de fichier (prisme-scan-AG93.json → AG93)
             const m = scanFile.match(/prisme-scan-(.+)\.json/);
             if (m) _agenceLabel = m[1];
             _updateAgenceHeader();
-            console.log('[Scan] ' + _articles.size + ' articles chargés depuis data/' + scanFile);
+            console.log('[Scan] ' + _articles.size + ' articles chargés depuis data/' + scanFile + ' (plus récent que IDB)');
             await _saveScanToIDB(data);
             return true;
           }
@@ -182,6 +191,7 @@ async function _tryFetchScanJson() {
     if (!resp.ok) return false;
     const data = await resp.json();
     if (!data.articles?.length) return false;
+    if (idbTimestamp && data.timestamp && data.timestamp <= idbTimestamp) return false;
     _loadFromScanPayload(data);
     console.log('[Scan] ' + _articles.size + ' articles chargés depuis data/scan.json');
     await _saveScanToIDB(data);
