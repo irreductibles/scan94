@@ -108,7 +108,7 @@ body{font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:v
 
 <div class="search-wrap">
   <input type="text" id="scanInput" placeholder="Code, libelle ou emplacement..." autofocus autocomplete="off">
-  <button class="cam-btn" id="camBtn" onclick="toggleCamera()">&#x1F4F7;</button>
+  <button class="cam-btn" id="camBtn" onclick="toggleCamera()" style="font-size:22px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="2" y1="4" x2="2" y2="20"/><line x1="6" y1="4" x2="6" y2="20"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="13" y1="4" x2="13" y2="20"/><line x1="16" y1="4" x2="16" y2="20"/><line x1="19" y1="4" x2="19" y2="20"/><line x1="22" y1="4" x2="22" y2="20"/></svg></button>
   <button class="clear-btn" id="clearBtn" onclick="clearScan()">&#x2715;</button>
   <button class="scan-mode-btn" id="scanModeBtn" onclick="toggleScanMode()">&#x2328;&#xFE0F;</button>
 </div>
@@ -134,6 +134,6 @@ body{font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:v
 <div class="scan-count" id="scanCount"></div>
 <script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.0.3/dist/iife/reader/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@undecaf/zbar-wasm@0.11.0/dist/index.js"></script>
-<script src="js/scan.js?v=202605061338"></script>
+<script src="js/scan.js?v=202605070759"></script>
 </body>
 </html>

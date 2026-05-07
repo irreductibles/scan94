@@ -491,8 +491,8 @@ function _renderCard(code) {
       <div class="lib">${_esc(r.libelle || '—')}</div>
     </div>
     <div class="hero">
-      ${r.prixMoyenReseau ? `<div class="hero-cell">
-        <div class="hero-val">${prixMoyen}</div>
+      ${r.prixMoyenReseau ? `<div class="hero-cell" onclick="const v=this.querySelector('.hero-val');if(v.style.filter){v.style.filter='';v.dataset.shown='1'}else{v.style.filter='blur(8px)';delete v.dataset.shown}" style="cursor:pointer">
+        <div class="hero-val" style="filter:blur(8px);transition:filter .2s">${prixMoyen}</div>
         <div class="hero-label">PRIX MOY.<span style="color:var(--t3);font-size:8px;margin-left:3px">${txMarge}</span></div>
       </div>` : ''}
       <div class="hero-cell" onclick="_editStock('${r.code}',${stock})" style="cursor:pointer">
