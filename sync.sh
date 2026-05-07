@@ -5,6 +5,7 @@ DST="$HOME/prisme-scan94"
 
 cp "$SRC/js/scan.js" "$DST/js/scan.js"
 cp "$SRC/js/catalogue-marques.json" "$DST/js/catalogue-marques.json"
+cp "$SRC/scan.html" "$DST/index.html"
 
 # Generer index.json pour lister les fichiers data/
 if [ -d "$DST/data" ]; then

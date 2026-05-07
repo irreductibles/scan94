@@ -12,6 +12,7 @@ let _eanMap = null;     // Map<ean, code>
 let _refMap = null;     // Map<refFournisseur, code>
 let _agenceLabel = '';  // ex: 'AG93' extrait du nom de fichier
 let _catData = null;    // catalogue-marques.json brut {M, F, S, A, E}
+let _scanConfig = {};   // config.json par repo (prix, squelette, etc.)
 let _customEanMap = new Map(); // Map<ean, code> — associations terrain
 const _CUSTOM_EAN_KEY = 'prisme_custom_ean';
 let _scanCount = 0;
@@ -491,7 +492,7 @@ function _renderCard(code) {
       <div class="lib">${_esc(r.libelle || '—')}</div>
     </div>
     <div class="hero">
-      ${r.prixMoyenReseau ? `<div class="hero-cell" onclick="const v=this.querySelector('.hero-val');if(v.style.filter){v.style.filter='';v.dataset.shown='1'}else{v.style.filter='blur(8px)';delete v.dataset.shown}" style="cursor:pointer">
+      ${r.prixMoyenReseau && _scanConfig.prix !== false ? `<div class="hero-cell" onclick="const v=this.querySelector('.hero-val');if(v.style.filter){v.style.filter='';v.dataset.shown='1'}else{v.style.filter='blur(8px)';delete v.dataset.shown}" style="cursor:pointer">
         <div class="hero-val" style="filter:blur(8px);transition:filter .2s">${prixMoyen}</div>
         <div class="hero-label">PRIX MOY.<span style="color:var(--t3);font-size:8px;margin-left:3px">${txMarge}</span></div>
       </div>` : ''}
@@ -1116,6 +1117,16 @@ if ('serviceWorker' in navigator) {
 // ── Init ───────────────────────────────────────────────────────────────
 _loadActions();
 _loadCustomEan();
+// Charger config.json (optionnel, pour scan93/scan94 collègues)
+fetch('config.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({})).then(cfg => {
+  _scanConfig = cfg || {};
+  if (_scanConfig.squelette === false) {
+    const s = document.createElement('style');
+    s.textContent = '.sq-banner{display:none!important}';
+    document.head.appendChild(s);
+  }
+  console.log('[Scan] config:', JSON.stringify(_scanConfig));
+});
 loadData();
 
 // Charger EAN + refs fournisseur depuis le catalogue (indépendant de l'IDB)
