@@ -529,8 +529,8 @@ function _renderCard(code) {
       </div>
     </div>
     ${actionHtml ? `<div class="action-zone">${actionHtml}</div>` : ''}
-    <div style="padding:8px 12px 12px">
-      <button onclick="toggleCamera()" style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--card);border:1px solid var(--border);color:var(--t1);font-size:15px;font-weight:700;cursor:pointer">📷 Scanner</button>
+    <div style="padding:8px 12px 20px;text-align:center">
+      <button class="scan-fab" onclick="toggleCamera()"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="2" y1="4" x2="2" y2="20"/><line x1="6" y1="4" x2="6" y2="20"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="13" y1="4" x2="13" y2="20"/><line x1="16" y1="4" x2="16" y2="20"/><line x1="19" y1="4" x2="19" y2="20"/><line x1="22" y1="4" x2="22" y2="20"/></svg></button>
     </div>
   </div>`;
 }
