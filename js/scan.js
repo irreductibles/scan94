@@ -1208,6 +1208,13 @@ window._associateEan = function(ean) {
   _updateActionBadge();
   lookup(raw);
 };
+window._removeOneEan = function(ean) {
+  _customEanMap.delete(ean);
+  if (_eanMap) _eanMap.delete(ean);
+  _saveCustomEan();
+  _updateActionBadge();
+  showActions();
+};
 window._clearCustomEan = function() {
   if (!confirm(_customEanMap.size + ' association(s) EAN seront supprimées. Continuer ?')) return;
   _customEanMap.clear();
@@ -1458,6 +1465,7 @@ function showActions() {
         + '<span style="color:var(--t3)">→</span>'
         + '<span style="color:var(--t1);font-weight:700">' + _esc(code) + '</span>'
         + '<span style="color:var(--t2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(name) + '</span>'
+        + '<button onclick="window._removeOneEan(\'' + _esc(ean) + '\')" style="background:none;border:none;color:var(--red);font-size:14px;cursor:pointer;padding:2px 4px;flex-shrink:0">✕</button>'
         + '</div>';
     }
     html += '</div>';
