@@ -529,7 +529,7 @@ function _renderCard(code) {
       </div>
     </div>
     ${actionHtml ? `<div class="action-zone">${actionHtml}</div>` : ''}
-    <div style="padding:8px 12px 20px;text-align:center">
+    <div style="padding:4px 12px 6px;text-align:center">
       <button class="scan-fab" onclick="toggleCamera()"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="2" y1="4" x2="2" y2="20"/><line x1="6" y1="4" x2="6" y2="20"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="13" y1="4" x2="13" y2="20"/><line x1="16" y1="4" x2="16" y2="20"/><line x1="19" y1="4" x2="19" y2="20"/><line x1="22" y1="4" x2="22" y2="20"/></svg></button>
     </div>
   </div>`;
