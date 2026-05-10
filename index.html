@@ -193,8 +193,8 @@ function loadEngineData(engine) {
 }
 
 // Mutable on purpose : remplacé par hydrateFromIDB() au boot quand dispo.
-let ARTICLES = loadEngineData(ENGINE_DATA);
-let DATA_SOURCE = 'mock'; // 'mock' | 'idb'
+let ARTICLES = [];
+let DATA_SOURCE = 'loading'; // 'loading' | 'mock' | 'idb'
 
 // ── Associations EAN custom ─────────────────────────────────
 // Map<ean, articleCode> — persisté en localStorage
@@ -214,7 +214,7 @@ function getCustomEansForCode(code) { return [..._customEanMap.entries()].filter
 // Lit IndexedDB PRISME (clé 'scan' prioritaire, sinon 'current') comme scan.js.
 // Si trouvé : remplace ARTICLES et notifie l'app (custom event 'prisme-data').
 function hydrateFromIDB() {
-  if (typeof indexedDB === 'undefined') return;
+  if (typeof indexedDB === 'undefined') { ARTICLES = loadEngineData(ENGINE_DATA); DATA_SOURCE = 'mock'; return; }
   let req;
   try { req = indexedDB.open('PRISME', 2); } catch (e) { return; }
   req.onerror = () => {};
@@ -226,7 +226,7 @@ function hydrateFromIDB() {
   };
   req.onsuccess = () => {
     const db = req.result;
-    if (!db.objectStoreNames.contains('session')) return;
+    if (!db.objectStoreNames.contains('session')) { ARTICLES = loadEngineData(ENGINE_DATA); DATA_SOURCE = 'mock'; return; }
     const tx = db.transaction('session', 'readonly');
     const store = tx.objectStore('session');
     const grab = (key) => new Promise(res => {
@@ -256,7 +256,12 @@ function hydrateFromIDB() {
           const rows = (scan?.articles?.length ? scan.articles
                        : scan?.finalData?.length ? scan.finalData
                        : null);
-          if (!rows) { console.log('[Prisme] IDB vide → fallback mock'); return; }
+          if (!rows) {
+            console.log('[Prisme] IDB vide → fallback mock');
+            ARTICLES = loadEngineData(ENGINE_DATA); DATA_SOURCE = 'mock';
+            window.dispatchEvent(new CustomEvent('prisme-data', { detail:{ count: ARTICLES.length, source:'mock' } }));
+            return;
+          }
           ARTICLES = loadEngineData(rows);
           DATA_SOURCE = 'idb';
           console.log('[Prisme] IDB scan · ' + ARTICLES.length + ' articles');
@@ -748,8 +753,16 @@ function HomeScreen({ t, onSearch, onScan, onScanDirect, onArticle, onInv, onDou
   });
   return (
     <>
-      <TopBar onMenu={onMenu} sub={`${t.agency} · ${t.day} ${t.time}${DATA_SOURCE!=='idb'?' · '+DATA_SOURCE:''}`} />
+      <TopBar onMenu={onMenu} sub={`${t.agency} · ${t.day} ${t.time}${DATA_SOURCE==='idb'?'':DATA_SOURCE==='loading'?' · chargement…':' · '+DATA_SOURCE}`} />
       {invMode && <InvBanner doneCount={invDoneCount} total={invTotal} zone={invZone} onTap={onInvOpen} onExit={onInvExit} />}
+      {ARTICLES.length === 0 ? (
+        <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{textAlign:'center',color:T.t3,fontSize:13}}>
+            <div style={{fontSize:28,marginBottom:8,animation:'pulse 1.5s infinite'}}>...</div>
+            Chargement des articles
+          </div>
+        </div>
+      ) : (
       <div style={{flex:1,padding:'14px 16px 0',overflow:'auto',display:'flex',flexDirection:'column'}}>
 
         {todos.length > 0 && SCAN_CONFIG.retour !== false ? (<>
@@ -826,6 +839,7 @@ function HomeScreen({ t, onSearch, onScan, onScanDirect, onArticle, onInv, onDou
           })}
         </div>
       </div>
+      )}
       <BottomBar onSearch={onSearch} onScan={onScanDirect} onActions={onActions} count={actionsCount} />
     </>
   );
