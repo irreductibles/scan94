@@ -2646,8 +2646,8 @@ function PCApp() {
   const [, bump] = useState(0);
   useEffect(() => {
     const h = () => bump(v => v + 1);
-    document.addEventListener('prisme-data', h);
-    return () => document.removeEventListener('prisme-data', h);
+    window.addEventListener('prisme-data', h);
+    return () => window.removeEventListener('prisme-data', h);
   }, []);
   const [code, setCode] = useState(null);
   const [q, setQ] = useState('');
@@ -2876,7 +2876,13 @@ function PCApp() {
 
         {/* Center: article view */}
         <div key={flashKey} className={article?'scan-flash':''} style={{flex:1,overflow:'auto',padding:'24px 32px'}}>
-          {!article && !unknown && <PCEmpty agency={CTX.agency} pendingActions={pendingActions} historyCount={history.length} />}
+          {!article && !unknown && DATA_SOURCE === 'loading' && (
+            <div style={{maxWidth:720,margin:'8vh auto 0',textAlign:'center',color:T.t2}}>
+              <div style={{fontSize:36,fontWeight:900,letterSpacing:-1,color:T.t1,marginBottom:12}}>Chargement...</div>
+              <div style={{fontSize:13}}>Connexion a la base articles</div>
+            </div>
+          )}
+          {!article && !unknown && DATA_SOURCE !== 'loading' && <PCEmpty agency={CTX.agency} pendingActions={pendingActions} historyCount={history.length} />}
           {unknown && (
             <div style={{maxWidth:560,margin:'80px auto',padding:'28px',background:T.card,borderRadius:16,border:`1px solid ${T.border}`,textAlign:'center'}}>
               <div style={{fontSize:18,fontWeight:800,color:T.t1}}>Code <span style={{color:T.accent,letterSpacing:1}} className="tn">"{unknown}"</span> non trouve</div>
