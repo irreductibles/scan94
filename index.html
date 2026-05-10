@@ -49,6 +49,7 @@
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.0.3/dist/iife/reader/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@undecaf/zbar-wasm@0.11.0/dist/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
 <div id="stage">
@@ -72,6 +73,13 @@ const AGENCY = (() => {
     return m ? m[0].toUpperCase() : 'AG93';
   } catch (e) { return 'AG93'; }
 })();
+// Config par repo (config.json) — features activables
+const _CFG = { ocr: true, prix: true, squelette: true };
+fetch('config.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).then(c => {
+  Object.assign(_CFG, c);
+  window.dispatchEvent(new Event('cfg-loaded'));
+}).catch(() => {});
+
 const CTX = {
   greeting: AGENCY,
   agency: AGENCY,
@@ -517,6 +525,7 @@ function App() {
         if (k === 'inv') { enterInv(); }
         if (k === 'invStop') { if (confirm("Abandonner l'inventaire en cours ? Les comptages seront perdus.")) cancelInv(); }
         if (k === 'ean') { setSheet('ean'); return; }
+        if (k === 'ocr') { setSheet('ocr'); return; }
         if (k === 'sync') { showToast('Synchronisation…'); _fetchScanJson().then(ok => { if (ok) showToast('✓ ' + ARTICLES.length + ' articles synchronisés'); else showToast('✕ Aucun fichier trouvé'); }); }
         if (k === 'purge') { ARTICLES = loadEngineData(ENGINE_DATA); DATA_SOURCE = 'mock'; window.dispatchEvent(new CustomEvent('prisme-data', { detail:{ count: ARTICLES.length, source:'mock' } })); showToast('Cache purgé'); }
         if (k === 'import') {
@@ -575,6 +584,7 @@ function App() {
         setSheet('todo');
       }} onUnknown={(code)=>setSheet({type:'unknown', code})} />}
       {sheet === 'ean' && <EanSheet onClose={()=>setSheet(null)} onPick={(c)=>{ setSheet(null); openArticle(c); }} />}
+      {sheet === 'ocr' && <OcrSheet onClose={()=>setSheet(null)} onPick={(c)=>{ setSheet(null); openArticle(c); }} />}
       {sheet?.type === 'unknown' && <UnknownSheet code={sheet.code} onClose={()=>setSheet(null)} onRetry={()=>setSheet('camera')} onAssoc={(artCode)=>{ setSheet(null); showToast(`EAN associé à ${artCode}`); openArticle(artCode); }} />}
       {sheet === 'todo' && <JournalSheet
         onClose={()=>setSheet(null)}
@@ -1158,6 +1168,7 @@ function MenuSheet({ onClose, onItem, invMode, invZone }) {
       ? { k:'inv', l:`Reprendre l'inventaire · ${invZone||'—'}`, s:'Continuer le comptage en cours', dot:'#fbbf24' }
       : { k:'inv', l:'Démarrer un inventaire', s:'Compter une zone', dot:'#22c55e' },
     ...(invMode ? [{ k:'invStop', l:"Arrêter l'inventaire en cours", s:'Abandonne le comptage et purge', dot:'#f87171' }] : []),
+    ...(_CFG.ocr ? [{ k:'ocr', l:'Lire un code (OCR)', s:'Camera → reconnaissance de texte', dot:'#60a5fa' }] : []),
     { k:'ean', l:`Codes-barres associés (${_customEanMap.size})`, s:'Voir et gérer les associations EAN', dot:'#fb923c' },
     { k:'sync', l:'Resynchroniser le cache', s:'Récupérer les dernières données', dot:'#fbbf24' },
     { k:'purge', l:'Purger le cache local', s:'Tout effacer', dot:'#f87171' },
@@ -1490,6 +1501,98 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         )}
       </div>
     </div>
+  );
+}
+
+// ── OCR ─────────────────────────────────────────
+function OcrSheet({ onClose, onPick }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const [status, setStatus] = useState('Initialisation camera...');
+  const [results, setResults] = useState([]);
+  const [scanning, setScanning] = useState(false);
+  const workerRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'environment', width:{ideal:1280}, height:{ideal:720} } });
+        if (cancelled) { stream.getTracks().forEach(t=>t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
+        setStatus('Camera prete. Cadre le code article et appuie sur Lire.');
+      } catch(e) { setStatus('Camera refusee : ' + e.message); }
+    })();
+    return () => { cancelled = true; streamRef.current?.getTracks().forEach(t=>t.stop()); };
+  }, []);
+
+  const doOcr = async () => {
+    if (!videoRef.current || scanning) return;
+    setScanning(true);
+    setStatus('Lecture en cours...');
+    try {
+      const v = videoRef.current;
+      const c = document.createElement('canvas');
+      c.width = v.videoWidth; c.height = v.videoHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(v, 0, 0);
+      if (!workerRef.current) {
+        workerRef.current = await Tesseract.createWorker('fra', 1, { logger: () => {} });
+        await workerRef.current.setParameters({ tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ -' });
+      }
+      const { data } = await workerRef.current.recognize(c);
+      // Extraire tous les codes 6 chiffres
+      const codes6 = (data.text.match(/\b\d{6}\b/g) || []);
+      const unique = [...new Set(codes6)];
+      const matched = unique.filter(code => ARTICLES.find(a => a.code === code));
+      if (matched.length > 0) {
+        setResults(matched);
+        setStatus(`${matched.length} code${matched.length>1?'s':''} reconnu${matched.length>1?'s':''}`);
+      } else {
+        const allNums = (data.text.match(/\d{4,}/g) || []).slice(0, 5);
+        setStatus(allNums.length ? `Pas de code article trouve. Lu : ${allNums.join(', ')}` : 'Aucun texte lisible. Rapproche la camera.');
+      }
+    } catch(e) { setStatus('Erreur OCR : ' + e.message); }
+    setScanning(false);
+  };
+
+  return (
+    <Sheet onClose={()=>{ workerRef.current?.terminate(); onClose(); }} title="Lire un code (OCR)" h="85vh">
+      <div style={{padding:'0 14px'}}>
+        <div style={{position:'relative',borderRadius:14,overflow:'hidden',background:'#000',marginBottom:10}}>
+          <video ref={videoRef} playsInline muted style={{width:'100%',display:'block',borderRadius:14}} />
+          {scanning && <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.5)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <div style={{color:'#fff',fontSize:14,fontWeight:700,animation:'pulse 1s infinite'}}>Analyse en cours...</div>
+          </div>}
+        </div>
+        <div style={{fontSize:11,color:T.t2,marginBottom:10,minHeight:30}}>{status}</div>
+        <button onClick={doOcr} disabled={scanning} style={{
+          width:'100%',padding:'14px',borderRadius:14,border:'none',
+          background:scanning ? T.card : T.accent, color:scanning ? T.t2 : '#0a0c10',
+          fontSize:14,fontWeight:800,marginBottom:10,opacity:scanning?.5:1,
+        }}>{scanning ? 'Lecture...' : 'Lire le code'}</button>
+        {results.length > 0 && (
+          <div style={{marginTop:4}}>
+            <div style={{fontSize:10,color:T.t3,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',marginBottom:6}}>Codes reconnus</div>
+            {results.map(code => {
+              const a = ARTICLES.find(x=>x.code===code);
+              return (
+                <button key={code} onClick={()=>{ workerRef.current?.terminate(); onPick(code); }} style={{
+                  width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 12px',
+                  background:T.card,borderRadius:12,border:`1px solid ${T.border}`,
+                  color:T.t1,textAlign:'left',marginBottom:6,
+                }}>
+                  <span style={{fontSize:16,fontWeight:900,fontFamily:'ui-monospace,monospace'}} className="tn">{code}</span>
+                  <span style={{flex:1,fontSize:12,color:T.t2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a?.lib||'—'}</span>
+                  <Ico d={ICONS.fwd} s={14} sw={2.5} />
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </Sheet>
   );
 }
 
