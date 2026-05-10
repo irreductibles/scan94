@@ -971,7 +971,7 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, addedA
             </button>
           );
           if (erpAction) return (
-            <button onClick={()=>onAddAction(erpAction.kind, erpAction.label + (erpAction.sub ? ` (${erpAction.sub})` : ''), 'ERP central · sync', '≤ 5 min')} style={{
+            <button onClick={onActions} style={{
               width:'100%',marginTop:12,padding:'12px 14px',borderRadius:14,border:'none',
               background:'#eab308',color:'#0a0c10',textAlign:'left',
               display:'flex',alignItems:'center',gap:12,
