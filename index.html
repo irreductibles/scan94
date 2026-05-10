@@ -790,12 +790,7 @@ function HomeScreen({ t, onSearch, onScan, onScanDirect, onArticle, onInv, onDou
       <TopBar onMenu={onMenu} sub={`${t.agency} · ${t.day} ${t.time}${DATA_SOURCE==='idb'?'':DATA_SOURCE==='loading'?' · chargement…':' · '+DATA_SOURCE}`} />
       {invMode && <InvBanner doneCount={invDoneCount} total={invTotal} zone={invZone} onTap={onInvOpen} onExit={onInvExit} />}
       {ARTICLES.length === 0 ? (
-        <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <div style={{textAlign:'center',color:T.t3,fontSize:13}}>
-            <div style={{fontSize:28,marginBottom:8,animation:'pulse 1.5s infinite'}}>...</div>
-            Chargement des articles
-          </div>
-        </div>
+        <div style={{flex:1}} />
       ) : (
       <div style={{flex:1,padding:'14px 16px 0',overflow:'auto',display:'flex',flexDirection:'column'}}>
 
