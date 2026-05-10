@@ -2017,7 +2017,7 @@ function JournalSheet({ onClose, actions, onPick, onUndo, onValidate, onPush, on
             </div>
             <Section title="En attente" items={pending} color="#fbbf24" />
             <Section title="Validees" items={validated} color="#86efac" />
-            {etiquettes.length > 0 && (
+            {etiquettes.filter(x=>x.status==='pending').length > 0 && (
               <button onClick={onLabels} style={{
                 width:'100%',marginTop:8,padding:'12px 14px',borderRadius:12,border:'none',
                 background:'rgba(167,139,250,.15)',color:'#c4b5fd',fontSize:13,fontWeight:800,letterSpacing:.3,
@@ -2025,7 +2025,7 @@ function JournalSheet({ onClose, actions, onPick, onUndo, onValidate, onPush, on
                 border:'1px solid rgba(167,139,250,.35)',
               }}>
                 <Ico d={ICONS.tag} s={15} sw={2.5} />
-                Imprimer · {etiquettes.length} étiquette{etiquettes.length>1?'s':''}
+                {etiquettes.filter(x=>x.status==='pending').length} étiquette{etiquettes.filter(x=>x.status==='pending').length>1?'s':''} à imprimer
                 <Ico d={ICONS.fwd} s={13} sw={2.5} />
               </button>
             )}
