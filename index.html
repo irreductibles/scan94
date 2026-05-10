@@ -2110,27 +2110,20 @@ function LabelsSheet({ onClose, actions, onMarkPrinted, onMarkAllPrinted }) {
                 </div>
               ))}
 
-              <div style={{marginTop:10,paddingTop:12,borderTop:`1px solid ${T.border}`}}>
-                <div style={{fontSize:10,color:T.t3,fontWeight:800,letterSpacing:.6,textTransform:'uppercase',padding:'0 4px 8px'}}>Commande Legallais</div>
-                <div style={{padding:'10px 12px',background:'rgba(34,197,94,.06)',border:'1px solid rgba(34,197,94,.2)',borderRadius:10,marginBottom:8}}>
-                  <div style={{fontSize:11,color:'#86efac',fontWeight:700,letterSpacing:.3,marginBottom:4}}>Format commande rapide · CSV</div>
-                  <div style={{fontSize:11,color:T.t2,lineHeight:1.5}}>Importe sur <strong style={{color:T.t1}}>legallais.com</strong> → Mon compte → Commande rapide → Importer fichier.</div>
-                </div>
-                <div style={{display:'flex',gap:6}}>
-                  <button onClick={copyCsv} style={{
-                    flex:1,padding:'12px',borderRadius:11,
-                    background:'rgba(255,255,255,.04)',color:T.t1,fontSize:12,fontWeight:700,
-                    border:`1px solid ${T.border}`,
-                  }}>Copier CSV</button>
-                  <button onClick={downloadCsv} style={{
-                    flex:2,padding:'12px',borderRadius:11,border:'none',
-                    background:'#fff',color:'#000',fontSize:13,fontWeight:800,letterSpacing:.2,
-                    display:'flex',alignItems:'center',justifyContent:'center',gap:8,
-                  }}>
-                    <Ico d={ICONS.download} s={15} sw={2.5} />
-                    Télécharger · {pending.length} réf{pending.length>1?'s':''}
-                  </button>
-                </div>
+              <div style={{display:'flex',gap:6,marginTop:10,paddingTop:10,borderTop:`1px solid ${T.border}`}}>
+                <button onClick={copyCsv} style={{
+                  flex:1,padding:'12px',borderRadius:11,
+                  background:'rgba(255,255,255,.04)',color:T.t1,fontSize:12,fontWeight:700,
+                  border:`1px solid ${T.border}`,
+                }}>Copier CSV</button>
+                <button onClick={downloadCsv} style={{
+                  flex:2,padding:'12px',borderRadius:11,border:'none',
+                  background:'#fff',color:'#000',fontSize:13,fontWeight:800,letterSpacing:.2,
+                  display:'flex',alignItems:'center',justifyContent:'center',gap:8,
+                }}>
+                  <Ico d={ICONS.download} s={15} sw={2.5} />
+                  Télécharger · {pending.length} réf{pending.length>1?'s':''}
+                </button>
               </div>
             </>)}
 
