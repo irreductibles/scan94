@@ -2515,14 +2515,37 @@ function EmplacementSheet({ code, onClose, onPick }) {
   const allee = a.empl.split('-')[0];
   const nearby = allEmpl.filter(e => e !== a.empl && e.startsWith(allee));
   const others = allEmpl.filter(e => e !== a.empl && !e.startsWith(allee));
-  const fakeScan = () => {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const scanScan = async () => {
+    if (scanning) { // stop
+      if (streamRef.current) { streamRef.current.getTracks().forEach(t=>t.stop()); streamRef.current = null; }
+      setScanning(false); return;
+    }
     setScanning(true);
-    setTimeout(() => {
-      const empls = [...new Set(ARTICLES.map(x=>x.empl).filter(Boolean))];
-      const pick = empls[Math.floor(Math.random()*empls.length)] || 'B12-D1';
-      setVal(pick); setScanning(false);
-    }, 1100);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'environment', width:{ideal:1280} } });
+      streamRef.current = stream;
+      const v = videoRef.current; if (!v) { setScanning(false); return; }
+      v.srcObject = stream; v.play();
+      const detect = async () => {
+        if (!streamRef.current) return;
+        if (typeof BarcodeDetector !== 'undefined') {
+          const bd = new BarcodeDetector({ formats:['code_128','code_39','ean_13','ean_8','qr_code'] });
+          const res = await bd.detect(v).catch(()=>[]);
+          if (res.length > 0) {
+            const raw = res[0].rawValue.toUpperCase().trim();
+            setVal(raw);
+            streamRef.current.getTracks().forEach(t=>t.stop()); streamRef.current = null;
+            setScanning(false); return;
+          }
+        }
+        if (streamRef.current) requestAnimationFrame(detect);
+      };
+      v.onloadedmetadata = () => detect();
+    } catch(e) { setScanning(false); }
   };
+  useEffect(() => () => { if (streamRef.current) streamRef.current.getTracks().forEach(t=>t.stop()); }, []);
   const isValid = val && val !== a.empl;
   return (
     <Sheet onClose={onClose} title="Modifier emplacement">
@@ -2543,13 +2566,20 @@ function EmplacementSheet({ code, onClose, onPick }) {
             flex:1,padding:'12px 14px',background:'#0a0c10',border:`1px solid ${T.border}`,borderRadius:11,
             color:T.t1,fontSize:14,fontWeight:700,letterSpacing:.5,fontFamily:'inherit',outline:'none',
           }} className="tn" />
-          <button onClick={fakeScan} style={{
+          <button onClick={scanScan} style={{
             width:48,padding:0,borderRadius:11,border:`1px solid ${scanning?T.accent:T.border}`,
             background:scanning?'rgba(251,146,60,.15)':T.card,color:T.accent,display:'flex',alignItems:'center',justifyContent:'center',
           }} title="Scanner l'étiquette de rayon">
             <Ico d={ICONS.scan} s={20} sw={2.5} />
           </button>
         </div>
+
+        {scanning && <div style={{borderRadius:12,overflow:'hidden',marginBottom:10,border:`2px solid ${T.accent}`,position:'relative'}}>
+          <video ref={videoRef} muted playsInline style={{width:'100%',display:'block',borderRadius:10}} />
+          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+            <div style={{width:'60%',height:2,background:T.accent,opacity:.6,borderRadius:1}} />
+          </div>
+        </div>}
 
         <button onClick={()=>isValid && onPick(val)} disabled={!isValid} style={{
           width:'100%',padding:'14px',borderRadius:12,border:'none',
