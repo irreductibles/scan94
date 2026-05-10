@@ -2574,8 +2574,8 @@ function EmplacementSheet({ code, onClose, onPick }) {
           </button>
         </div>
 
-        {scanning && <div style={{borderRadius:12,overflow:'hidden',marginBottom:10,border:`2px solid ${T.accent}`,position:'relative'}}>
-          <video ref={videoRef} muted playsInline style={{width:'100%',display:'block',borderRadius:10}} />
+        {scanning && <div style={{borderRadius:12,overflow:'hidden',marginBottom:10,border:`2px solid ${T.accent}`,position:'relative',maxHeight:120}}>
+          <video ref={videoRef} muted playsInline style={{width:'100%',display:'block',borderRadius:10,objectFit:'cover',height:120}} />
           <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
             <div style={{width:'60%',height:2,background:T.accent,opacity:.6,borderRadius:1}} />
           </div>
