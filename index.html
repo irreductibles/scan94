@@ -83,8 +83,8 @@ const { useState, useEffect, useMemo, useRef } = React;
 const AGENCY = (() => {
   try {
     const m = decodeURIComponent(window.location.pathname).match(/AG\d+/i);
-    return m ? m[0].toUpperCase() : 'AG93';
-  } catch (e) { return 'AG93'; }
+    return m ? m[0].toUpperCase() : 'AGXX';
+  } catch (e) { return 'AGXX'; }
 })();
 // Config collègue (chargé depuis config.json si dispo)
 let SCAN_CONFIG = {};
