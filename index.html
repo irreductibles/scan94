@@ -435,6 +435,7 @@ function App() {
         code={articleCode}
         onBack={articleInInv ? ()=>setPage('invList') : goHome}
         onActions={()=>setSheet('actions')}
+        onAddAction={(kind,label,dest,eta)=>addAction(articleCode,kind,label,dest,eta)}
         onScan={()=>{ setScanContinu(false); setSheet('camera'); }}
         addedActions={actions[articleCode]||[]}
         invMode={articleInInv}
@@ -846,7 +847,7 @@ const chipRow = () => ({
 });
 
 // ── ARTICLE ───────────────────────────────────────────────────
-function ArticleScreen({ t, code, onBack, onActions, onScan, addedActions, invMode, invDoneCount, invTotal, invZone, invCurrentCount, onInvOpen, onInvExit, onInvCount, onActionsCount, onTodo }) {
+function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, addedActions, invMode, invDoneCount, invTotal, invZone, invCurrentCount, onInvOpen, onInvExit, onInvCount, onActionsCount, onTodo }) {
   const [priceShown, setPriceShown] = useState(false);
   const [flip, setFlip] = useState(0);
   const a = ARTICLES.find(x=>x.code===code);
@@ -961,7 +962,7 @@ function ArticleScreen({ t, code, onBack, onActions, onScan, addedActions, invMo
             </button>
           );
           if (erpAction) return (
-            <button onClick={onActions} style={{
+            <button onClick={()=>onAddAction(erpAction.kind, erpAction.label + (erpAction.sub ? ` (${erpAction.sub})` : ''), 'ERP central · sync', '≤ 5 min')} style={{
               width:'100%',marginTop:12,padding:'12px 14px',borderRadius:14,border:'none',
               background:'#f59e0b',color:'#0a0c10',textAlign:'left',
               display:'flex',alignItems:'center',gap:12,
