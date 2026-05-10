@@ -429,7 +429,7 @@ function App() {
         onScan={()=>{ setScanContinu(false); setSheet('camera'); }}
       />}
       {page === 'article' && (() => {
-        const articleInInv = invMode && articleCode && INV_CODES.includes(articleCode);
+        const articleInInv = invMode && articleCode && (INV_CODES.includes(articleCode) || articleCode in invExtras);
         return <ArticleScreen
         t={t}
         code={articleCode}
