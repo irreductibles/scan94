@@ -550,7 +550,6 @@ function App() {
         if (fromInv && invMode && invZone && !INV_CODES.includes(c) && ARTICLES.find(x=>x.code===c)) {
           const a = ARTICLES.find(x=>x.code===c);
           setInvExtras(e => ({...e, [c]: (e[c] ?? a.stock)}));
-          showToast(`📍 Hors zone — fiche ouverte`);
         }
         openArticle(c);
       }} onBatch={(items)=>{
