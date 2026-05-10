@@ -421,7 +421,11 @@ function App() {
       _refreshArticle(a);
     }
     const entry = { id, kind, label, dest, eta, ts:Date.now(), status:'pending', _prev:prev };
-    setActions(ac => ({...ac, [code]: [...(ac[code]||[]), entry]}));
+    setActions(ac => {
+      // Résoudre le "A verifier" du scan continu quand on prend une vraie action
+      const existing = (ac[code]||[]).map(x => x.kind==='check' && x.status==='pending' ? {...x, status:'validee'} : x);
+      return {...ac, [code]: [...existing, entry]};
+    });
     setSheet({ type:'confirm', code, id, label, dest, eta });
   };
   const validateAction = (code, id) => {
