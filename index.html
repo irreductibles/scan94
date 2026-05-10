@@ -30,6 +30,17 @@
     .notch,.home-ind,.status{display:none}
     .app{top:env(safe-area-inset-top);left:0;right:0;bottom:0}
   }
+  /* PC mode: pointer:fine + écran large → workspace plein écran */
+  body.pc-mode #stage{background:#0a0c10;align-items:stretch;justify-content:stretch;padding:0}
+  body.pc-mode .phone{width:100vw;height:100vh;border-radius:0;background:#0a0c10;padding:0;box-shadow:none}
+  body.pc-mode .screen{border-radius:0;height:100%}
+  body.pc-mode .notch,body.pc-mode .home-ind,body.pc-mode .status{display:none}
+  body.pc-mode .app{top:0;left:0;right:0;bottom:0}
+  body.pc-mode ::-webkit-scrollbar{display:initial;width:8px;height:8px}
+  body.pc-mode ::-webkit-scrollbar-track{background:#0a0c10}
+  body.pc-mode ::-webkit-scrollbar-thumb{background:#252a35;border-radius:99px}
+  body.pc-mode ::-webkit-scrollbar-thumb:hover{background:#3a3f4d}
+  body.pc-mode *{scrollbar-width:thin;scrollbar-color:#252a35 #0a0c10}
   button{font-family:inherit;cursor:pointer}
   /* Animations */
   @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
@@ -38,6 +49,9 @@
   @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
   @keyframes scanline{0%{top:10%}50%{top:85%}100%{top:10%}}
   @keyframes fadeFlash{0%{opacity:1}100%{opacity:0}}
+  @keyframes scanFlash{0%{background:rgba(251,146,60,.0)}30%{background:rgba(251,146,60,.18)}100%{background:rgba(251,146,60,0)}}
+  .scan-flash{animation:scanFlash .35s ease-out}
+  @keyframes pulseDot{0%,100%{opacity:.4;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
   .sheet-bg{animation:fade .2s ease}
   .sheet{animation:slideUp .25s cubic-bezier(.2,.8,.3,1)}
   .pop{animation:pop .15s ease}
@@ -2433,7 +2447,499 @@ function Toast({ msg }) {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+// ── PC MODE ───────────────────────────────────────────────────
+const IS_PC = (() => {
+  try { return window.matchMedia('(pointer: fine) and (min-width: 1024px)').matches; }
+  catch (e) { return false; }
+})();
+
+const kbd = {
+  display:'inline-block',padding:'1px 5px',borderRadius:3,background:'rgba(255,255,255,.06)',
+  border:'1px solid #252a35',fontSize:10,fontWeight:700,color:'#9aa3b2',fontFamily:'inherit',
+};
+const pcBtn = {
+  padding:'10px 18px',borderRadius:10,border:`1px solid ${T.border}`,background:T.card,
+  color:T.t1,fontSize:13,fontWeight:700,cursor:'pointer',letterSpacing:.3,
+};
+const pcStat = {padding:'18px 18px',background:T.card,borderRadius:14,border:`1px solid ${T.border}`};
+const pcStatLbl = {fontSize:9,fontWeight:800,letterSpacing:.6,color:T.t3,textTransform:'uppercase'};
+const pcStatVal = {fontSize:36,fontWeight:900,color:T.t1,marginTop:6,letterSpacing:-1};
+const pcStatSub = {fontSize:11,color:T.t2,marginTop:4};
+const pcCellSmall = {padding:'10px 12px',background:'#0a0c10',borderRadius:10};
+const pcActionBtn = {
+  padding:'12px 14px',borderRadius:11,border:`1px solid ${T.border}`,background:'rgba(255,255,255,.02)',
+  color:T.t1,textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:10,
+};
+
+function CopyBtn({ code, large }) {
+  const [copied, setCopied] = useState(false);
+  const click = (e) => {
+    e.stopPropagation();
+    try { navigator.clipboard.writeText(code); } catch(_){}
+    setCopied(true);
+    setTimeout(()=>setCopied(false), 1100);
+  };
+  if (large) return (
+    <button onClick={click} title="Copier le code" style={{
+      padding:'5px 10px',borderRadius:7,border:`1px solid ${copied?'#22c55e':T.border}`,
+      background:copied?'rgba(34,197,94,.12)':T.card,color:copied?'#86efac':T.t2,
+      fontSize:11,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5,letterSpacing:.3,
+    }}>
+      <span>{copied?'Copie':'Copier'}</span>
+    </button>
+  );
+  return (
+    <button onClick={click} title="Copier le code" style={{
+      width:36,border:'none',borderLeft:`1px solid ${T.border}`,
+      background:copied?'rgba(34,197,94,.15)':'rgba(255,255,255,.02)',
+      color:copied?'#86efac':T.t3,fontSize:13,fontWeight:700,cursor:'pointer',
+      display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,
+    }}>{copied?'✓':'⧉'}</button>
+  );
+}
+
+function PCEmpty({ agency, pendingActions, historyCount }) {
+  return (
+    <div style={{maxWidth:720,margin:'8vh auto 0',textAlign:'center',color:T.t1}}>
+      <div style={{fontSize:9,fontWeight:800,letterSpacing:1.5,color:T.t3,textTransform:'uppercase'}}>Agence {agency}</div>
+      <div style={{fontSize:36,fontWeight:900,letterSpacing:-1,marginTop:8,color:T.t1}}>Pret a scanner.</div>
+      <div style={{fontSize:14,color:T.t2,marginTop:10,maxWidth:440,margin:'10px auto 0',lineHeight:1.5}}>
+        Pointe la douchette USB sur un code, ou tape un code article, EAN, libelle ou emplacement dans le champ a gauche.
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginTop:36,textAlign:'left'}}>
+        <div style={pcStat}>
+          <div style={pcStatLbl}>Refs en cache</div>
+          <div style={pcStatVal} className="tn">{ARTICLES.length}</div>
+          <div style={pcStatSub}>{DATA_SOURCE === 'idb' ? 'session PRISME live' : 'donnees demo'}</div>
+        </div>
+        <div style={pcStat}>
+          <div style={pcStatLbl}>Actions en attente</div>
+          <div style={{...pcStatVal,color:pendingActions?T.accent:T.t1}} className="tn">{pendingActions}</div>
+          <div style={pcStatSub}>sync ERP central</div>
+        </div>
+        <div style={pcStat}>
+          <div style={pcStatLbl}>Scans aujourd'hui</div>
+          <div style={pcStatVal} className="tn">{historyCount}</div>
+          <div style={pcStatSub}>session courante</div>
+        </div>
+      </div>
+      <div style={{marginTop:36,fontSize:11,color:T.t3,display:'flex',gap:18,justifyContent:'center',flexWrap:'wrap'}}>
+        <span><kbd style={kbd}>douchette USB</kbd> scanne directement</span>
+        <span><kbd style={kbd}>Tab/click</kbd> n'importe ou — focus revient toujours sur le champ</span>
+        <span><kbd style={kbd}>Esc</kbd> ferme la fiche</span>
+      </div>
+    </div>
+  );
+}
+
+function PCArticle({ a, actions, onAddAction, onClose }) {
+  const v = VC[a.verdict];
+  const [priceShown, setPriceShown] = useState(false);
+  const showPrisme = SCAN_CONFIG.retour !== false;
+  const erpDiff = showPrisme && (a.erpMin !== a.min || a.erpMax !== a.max);
+  return (
+    <div style={{maxWidth:1100,margin:'0 auto'}}>
+      <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:18}}>
+        <div style={{padding:'4px 10px',borderRadius:99,background:v.bg,color:v.fg,fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:'uppercase'}}>● {v.label}</div>
+        <div style={{fontSize:13,color:T.t3,fontWeight:600,letterSpacing:.5}} className="tn">{a.code}</div>
+        <CopyBtn code={a.code} large />
+        <a href={`http://www.legallais.com/articles/${a.code}`} target="_blank" rel="noopener" title="Ouvrir sur legallais.com" style={{
+          padding:'5px 10px',borderRadius:7,border:`1px solid ${T.border}`,background:T.card,color:T.t2,
+          fontSize:11,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,letterSpacing:.3,textDecoration:'none',
+        }}>legallais.com</a>
+        <div style={{fontSize:11,color:T.t3}}>{a.sq}</div>
+        <div style={{flex:1}} />
+        <button onClick={onClose} style={{...pcBtn,padding:'7px 12px',fontSize:12}}>Fermer · Esc</button>
+      </div>
+      <div style={{fontSize:26,fontWeight:800,color:T.t1,letterSpacing:-.3,lineHeight:1.15}}>{a.lib}</div>
+      <div style={{fontSize:13,color:T.t2,marginTop:6}}>{a.marque} · {a.fam} {a.refFourn ? <span style={{color:T.t3,marginLeft:8}}>ref. four. {a.refFourn}</span>:''}</div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1.2fr 1fr',gap:20,marginTop:24,alignItems:'start'}}>
+        <div style={{padding:'24px 26px',background:T.card,borderRadius:16,border:`1px solid ${T.border}`,position:'relative',overflow:'hidden'}}>
+          <div style={{position:'absolute',top:-60,right:-60,width:200,height:200,borderRadius:99,background:v.edge,opacity:.1,filter:'blur(50px)',pointerEvents:'none'}} />
+          <div style={pcStatLbl}>En stock</div>
+          <div style={{display:'flex',alignItems:'baseline',gap:10,marginTop:6,position:'relative'}}>
+            <span style={{fontSize:96,fontWeight:900,color:v.fg,lineHeight:.9,letterSpacing:-4}} className="tn">{a.stock}</span>
+            <span style={{fontSize:16,color:T.t2,fontWeight:600}}>pcs</span>
+            <span style={{marginLeft:'auto',fontSize:13,color:T.t2,fontWeight:600}} className="tn">{a.couv}j de couverture</span>
+          </div>
+          <div style={{marginTop:18,height:8,background:'#0a0c10',borderRadius:99,position:'relative'}}>
+            <div style={{position:'absolute',left:0,top:0,height:'100%',width:`${Math.min(100,(a.stock/Math.max(a.max*1.5,a.stock,1))*100)}%`,background:v.edge,borderRadius:99}} />
+            <div style={{position:'absolute',left:`${(a.min/Math.max(a.max*1.5,a.stock,1))*100}%`,top:-3,width:2,height:14,background:T.t2}} />
+            <div style={{position:'absolute',left:`${(a.max/Math.max(a.max*1.5,a.stock,1))*100}%`,top:-3,width:2,height:14,background:T.t2}} />
+          </div>
+          <div style={{display:'flex',justifyContent:'space-between',marginTop:8,fontSize:11,color:T.t3,fontWeight:600}} className="tn">
+            <span>min {a.min}</span><span>max {a.max}</span>
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginTop:18}}>
+            <div style={pcCellSmall}>
+              <div style={pcStatLbl}>Empl.</div>
+              <div style={{fontSize:18,fontWeight:800,color:T.accent,marginTop:3}}>{a.empl}</div>
+            </div>
+            <button onClick={()=>setPriceShown(p=>!p)} style={{...pcCellSmall,border:'none',cursor:'pointer',textAlign:'left'}}>
+              <div style={pcStatLbl}>Prix moy. <span style={{color:T.t3,fontWeight:500}}>· {a.marge}%</span></div>
+              <div style={{fontSize:16,fontWeight:800,color:T.t1,marginTop:3,filter:priceShown?'none':'blur(5px)',transition:'filter .15s'}} className="tn">{a.prix?a.prix.toFixed(2):'--'} EUR</div>
+            </button>
+            <div style={pcCellSmall}>
+              <div style={pcStatLbl}>Statut</div>
+              <div style={{fontSize:13,fontWeight:700,color:T.t1,marginTop:5}}>{a.statut}</div>
+            </div>
+          </div>
+
+          {erpDiff && (
+            <div style={{marginTop:14,padding:'10px 12px',background:'rgba(245,158,11,.08)',borderRadius:10,border:'1px solid rgba(245,158,11,.25)',fontSize:12,color:'#fbbf24'}}>
+              ERP actuel <strong>{a.erpMin}/{a.erpMax}</strong> != PRISME <strong>{a.min}/{a.max}</strong>
+            </div>
+          )}
+        </div>
+
+        <div style={{padding:'20px 22px',background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
+          <div style={pcStatLbl}>Actions</div>
+          <div style={{marginTop:14,display:'flex',flexDirection:'column',gap:8}}>
+            {a.primary && (
+              <button onClick={()=>onAddAction(a.primary.kind, a.primary.label, 'ERP central · sync', '< 5 min')} style={{
+                padding:'14px 16px',borderRadius:12,border:'none',background:v.edge,color:'#fff',
+                textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:12,
+              }}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,fontWeight:800}}>{a.primary.label}{a.primary.qty?` · ${a.primary.qty} pcs`:''}</div>
+                  <div style={{fontSize:11,fontWeight:500,opacity:.85,marginTop:2}}>{a.primary.sub}</div>
+                </div>
+                <div style={{fontSize:18,opacity:.7}}>-></div>
+              </button>
+            )}
+            {(a.secondary||[]).map((s,i) => (
+              <button key={i} onClick={()=>onAddAction(s.kind, s.label, 'ERP central', '< 5 min')} style={pcActionBtn}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:T.t1}}>{s.label}</div>
+                  <div style={{fontSize:11,color:T.t3,marginTop:2}}>{s.sub}</div>
+                </div>
+                <div style={{fontSize:14,color:T.t3}}>-></div>
+              </button>
+            ))}
+          </div>
+
+          {actions.length > 0 && (
+            <>
+              <div style={{...pcStatLbl,marginTop:22}}>Deja ajoutees · {actions.length}</div>
+              <div style={{marginTop:10,display:'flex',flexDirection:'column',gap:6}}>
+                {actions.map(act => (
+                  <div key={act.id} style={{padding:'9px 12px',borderRadius:9,background:'#0a0c10',border:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:10,fontSize:12}}>
+                    <div style={{width:6,height:6,borderRadius:99,background:act.status==='pending'?'#fbbf24':act.status==='validee'?'#22c55e':'#ef4444',flexShrink:0}} />
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:700,color:T.t1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{act.label}</div>
+                      <div style={{fontSize:10,color:T.t3,marginTop:1}}>{act.status==='pending'?'en cours':act.status==='validee'?'validee':'refusee'}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PCApp() {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const h = () => bump(v => v + 1);
+    document.addEventListener('prisme-data', h);
+    return () => document.removeEventListener('prisme-data', h);
+  }, []);
+  const [code, setCode] = useState(null);
+  const [q, setQ] = useState('');
+  const [history, setHistory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('prisme_pc_hist')||'[]'); } catch(e){ return []; }
+  });
+  useEffect(()=>{ try{ localStorage.setItem('prisme_pc_hist', JSON.stringify(history.slice(0,50))); }catch(e){} }, [history]);
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const [actions, setActions] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('prisme_actions')||'{}'); } catch(e) { return {}; }
+  });
+  useEffect(() => { try { localStorage.setItem('prisme_actions', JSON.stringify(actions)); } catch(e){} }, [actions]);
+  const [unknown, setUnknown] = useState(null);
+  const [flashKey, setFlashKey] = useState(0);
+  const [scannerActive, setScannerActive] = useState(false);
+  const inputRef = useRef(null);
+  const scanBuf = useRef({ chars: '', tStart: 0, tLast: 0 });
+  const scannerTimer = useRef(null);
+
+  // Refocus input
+  useEffect(() => {
+    const r = () => {
+      const el = document.activeElement;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      inputRef.current?.focus();
+    };
+    r();
+    const i = setInterval(r, 800);
+    window.addEventListener('click', r);
+    return () => { clearInterval(i); window.removeEventListener('click', r); };
+  }, []);
+
+  // Douchette detection
+  useEffect(() => {
+    const onKey = (e) => {
+      const now = performance.now();
+      const buf = scanBuf.current;
+      if (e.key.length === 1) {
+        if (now - buf.tLast > 80) { buf.chars = e.key; buf.tStart = now; }
+        else buf.chars += e.key;
+        buf.tLast = now;
+        if (buf.chars.length >= 4 && (now - buf.tStart) / buf.chars.length < 25) {
+          setScannerActive(true);
+          clearTimeout(scannerTimer.current);
+          scannerTimer.current = setTimeout(() => setScannerActive(false), 1500);
+        }
+      } else if (e.key === 'Enter') {
+        buf.chars = ''; buf.tStart = 0;
+      }
+      if (e.key === 'Escape') { setCode(null); setQ(''); setUnknown(null); inputRef.current?.focus(); }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+
+  const lookup = (raw) => {
+    const trimmed = String(raw||'').trim();
+    if (!trimmed) return;
+    const c = findArt(trimmed);
+    if (c) {
+      setCode(c);
+      setQ('');
+      setUnknown(null);
+      setFlashKey(k=>k+1);
+      const wasScan = scannerActive || /^\d{6,14}$/.test(trimmed);
+      setHistory(h => {
+        const filtered = h.filter(x => x.code !== c);
+        return [{code:c, ts:Date.now(), mode: wasScan ? 'scan':'search'}, ...filtered].slice(0,50);
+      });
+    } else {
+      setUnknown(trimmed);
+      setCode(null);
+    }
+    inputRef.current?.focus();
+  };
+
+  const onSubmit = (e) => { e?.preventDefault(); if (q.trim()) lookup(q); };
+
+  const results = useMemo(() => {
+    const s = q.trim();
+    if (!s) return [];
+    const words = s.toLowerCase().split(/\s+/).filter(w=>w.length>=2);
+    if (!words.length) return [];
+    return ARTICLES.filter(a => {
+      const hay = `${a.code} ${a.lib} ${a.empl} ${a.fam} ${a.marque||''} ${a.refFourn||''}`.toLowerCase();
+      return words.every(w => hay.includes(w));
+    }).slice(0,12);
+  }, [q]);
+
+  const article = code ? ARTICLES.find(x=>x.code===code) : null;
+  const pendingActions = Object.values(actions).reduce((n,a)=>n+a.filter(x=>x.status==='pending').length,0);
+
+  const _pcRefresh = (a) => {
+    a.verdict = _verdict(a.stock, a.min, a.max);
+    a.primary = _primary(a.verdict, a.stock, a.min, a.max, a.statut);
+    a.secondary = _secondary(a._raw || {});
+  };
+  const pcAddAction = (artCode, kind, label, dest, eta) => {
+    const id = 'a' + Math.random().toString(36).slice(2,8);
+    const a = ARTICLES.find(x=>x.code===artCode);
+    const prev = a ? {stock:a.stock, min:a.min, max:a.max} : null;
+    if (a) {
+      if (kind === 'corriger_stock') { a.stock = 0; }
+      if (kind === 'erp') { a.min = a._raw?.nouveauMin ?? a.min; a.max = a._raw?.nouveauMax ?? a.max; }
+      _pcRefresh(a);
+    }
+    const entry = { id, kind, label, dest, eta, ts:Date.now(), status:'pending', _prev:prev };
+    setActions(ac => ({...ac, [artCode]: [...(ac[artCode]||[]), entry]}));
+    bump(v=>v+1);
+  };
+
+  return (
+    <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',background:T.bg,color:T.t1,fontSize:14}}>
+      {/* Top bar */}
+      <div style={{height:54,padding:'0 20px',display:'flex',alignItems:'center',gap:18,borderBottom:`1px solid ${T.border}`,background:'#0d1016',flexShrink:0}}>
+        <div style={{fontSize:14,fontWeight:900,letterSpacing:1.5,color:T.t1}}>PRISME</div>
+        <div style={{padding:'3px 10px',borderRadius:6,background:T.card,fontSize:11,fontWeight:700,letterSpacing:.5,color:T.accent}}>{CTX.agency}</div>
+        <div style={{fontSize:11,color:T.t3,fontWeight:600}} className="tn">{ARTICLES.length.toLocaleString('fr-FR')} refs</div>
+        <div style={{flex:1}} />
+        <div style={{display:'flex',alignItems:'center',gap:8,padding:'5px 11px',borderRadius:99,background:scannerActive?'rgba(251,146,60,.15)':T.card,border:`1px solid ${scannerActive?T.accent:T.border}`,transition:'all .2s'}}>
+          <div style={{width:7,height:7,borderRadius:99,background:scannerActive?T.accent:'#5b6473',animation:scannerActive?'pulseDot 1s infinite':'none'}} />
+          <span style={{fontSize:11,fontWeight:700,color:scannerActive?T.accent:T.t2,letterSpacing:.3}}>
+            {scannerActive ? 'Douchette detectee' : 'Douchette prete'}
+          </span>
+        </div>
+        <button onClick={()=>setHistoryOpen(o=>!o)} style={{...btnIcon(true),width:'auto',height:32,padding:'0 12px',gap:6,fontSize:12,fontWeight:700,color:T.t2}}>
+          <Ico d={ICONS.scan} s={14} sw={2.5} />
+          <span>Historique · {history.length}</span>
+        </button>
+      </div>
+
+      {/* Body */}
+      <div style={{flex:1,display:'flex',minHeight:0,overflow:'hidden'}}>
+        {/* Left: scan input + live results */}
+        <div style={{width:420,flexShrink:0,borderRight:`1px solid ${T.border}`,display:'flex',flexDirection:'column',background:'#0c0f15'}}>
+          <form onSubmit={onSubmit} style={{padding:'18px 18px 14px',borderBottom:`1px solid ${T.border}`}}>
+            <div style={{fontSize:9,color:T.t3,fontWeight:800,letterSpacing:1,textTransform:'uppercase',marginBottom:8}}>Scanner ou rechercher</div>
+            <div style={{display:'flex',alignItems:'center',gap:10,padding:'0 14px 0 16px',background:T.card,borderRadius:14,border:`2px solid ${q?T.accent:T.border}`,height:60,transition:'border-color .15s'}}>
+              <Ico d={scannerActive?ICONS.scan:ICONS.search} s={20} sw={2.5} />
+              <input ref={inputRef} value={q} onChange={e=>setQ(e.target.value)} autoFocus
+                placeholder="Code · libelle · EAN · ref four..."
+                style={{flex:1,background:'none',border:'none',color:T.t1,fontSize:18,fontWeight:q?800:500,outline:'none',letterSpacing:q?.5:0,fontVariantNumeric:'tabular-nums'}} />
+              {q && <button type="button" onClick={()=>{setQ('');inputRef.current?.focus();}} style={{background:'none',border:'none',color:T.t3,fontSize:22,cursor:'pointer',padding:'4px 4px'}}>X</button>}
+              <button type="submit" disabled={!q.trim()} style={{height:42,padding:'0 14px',borderRadius:9,border:'none',background:q.trim()?T.accent:T.border,color:q.trim()?'#1a0e05':T.t3,fontSize:12,fontWeight:800,cursor:q.trim()?'pointer':'default',letterSpacing:.5}}>Enter</button>
+            </div>
+            <div style={{fontSize:10,color:T.t3,marginTop:8,display:'flex',gap:14,fontWeight:600}}>
+              <span><kbd style={kbd}>Enter</kbd> ouvrir</span>
+              <span><kbd style={kbd}>Esc</kbd> effacer</span>
+              <span style={{marginLeft:'auto',color:scannerActive?T.accent:T.t3}}>douchette auto</span>
+            </div>
+          </form>
+
+          <div style={{flex:1,overflow:'auto',padding:'10px 12px 16px'}}>
+            {!q.trim() && (
+              <>
+                <div style={{...sectionLabel,padding:'4px 6px'}}>Recents · {history.length}</div>
+                {history.length === 0 && (
+                  <div style={{padding:'40px 16px',textAlign:'center',color:T.t3,fontSize:12}}>
+                    Pointe la douchette ou tape un code.
+                  </div>
+                )}
+                {history.slice(0,15).map(h => {
+                  const a = ARTICLES.find(x=>x.code===h.code); if (!a) return null;
+                  const v = VC[a.verdict];
+                  const t = new Date(h.ts);
+                  const tStr = t.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+                  return (
+                    <button key={h.ts} onClick={()=>{setCode(h.code);inputRef.current?.focus();}} style={{
+                      width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 12px',
+                      background:code===h.code?T.card2:'transparent',borderRadius:10,border:'none',
+                      borderLeft:`3px solid ${v.edge}`,color:T.t1,textAlign:'left',marginBottom:3,cursor:'pointer',
+                    }}>
+                      <span title={h.mode==='scan'?'douchette':'recherche'} style={{fontSize:11,color:T.t3}}>{h.mode==='scan'?'S':'R'}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:11,color:T.t3,fontWeight:600}} className="tn">{a.code} · {tStr}</div>
+                        <div style={{fontSize:13,fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a.lib}</div>
+                      </div>
+                      <div style={{fontSize:15,fontWeight:800,color:v.fg}} className="tn">{a.stock}</div>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+            {q.trim() && results.length === 0 && (
+              <div style={{padding:'40px 16px',textAlign:'center',color:T.t2,fontSize:13}}>
+                Aucun resultat pour "{q}"
+              </div>
+            )}
+            {q.trim() && results.length > 0 && (
+              <>
+                <div style={{...sectionLabel,padding:'4px 6px'}}>{results.length} resultat{results.length>1?'s':''}</div>
+                {results.map(a => {
+                  const v = VC[a.verdict];
+                  return (
+                    <div key={a.code} className="pop" style={{
+                      position:'relative',display:'flex',alignItems:'stretch',gap:0,
+                      background:T.card,borderRadius:10,border:`1px solid ${T.border}`,
+                      borderLeft:`3px solid ${v.edge}`,marginBottom:5,overflow:'hidden',
+                    }}>
+                      <button onClick={()=>{setCode(a.code);setQ('');setHistory(h=>[{code:a.code,ts:Date.now(),mode:'search'},...h.filter(x=>x.code!==a.code)].slice(0,50));}} style={{
+                        flex:1,display:'flex',alignItems:'center',gap:10,padding:'10px 12px',
+                        background:'none',border:'none',color:T.t1,textAlign:'left',cursor:'pointer',minWidth:0,
+                      }}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13,color:T.t2,fontWeight:800,letterSpacing:.8}} className="tn">{a.code}</div>
+                          <div style={{fontSize:13,fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:T.t1,marginTop:2}}>{a.lib}</div>
+                          <div style={{fontSize:10,color:T.accent,fontWeight:600,marginTop:1}}>{a.empl}<span style={{color:T.t3,fontWeight:400,marginLeft:6}}>{a.marque}</span></div>
+                        </div>
+                        <div style={{textAlign:'right'}}>
+                          <div style={{fontSize:18,fontWeight:800,color:v.fg,lineHeight:1}} className="tn">{a.stock}</div>
+                          <div style={{fontSize:9,color:T.t3,marginTop:2}} className="tn">{a.min}/{a.max}</div>
+                        </div>
+                      </button>
+                      <CopyBtn code={a.code} />
+                      <a href={`http://www.legallais.com/articles/${a.code}`} target="_blank" rel="noopener" title="Voir sur legallais.com" onClick={e=>e.stopPropagation()} style={{
+                        width:36,borderLeft:`1px solid ${T.border}`,background:'rgba(255,255,255,.02)',
+                        color:T.t3,fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,textDecoration:'none',
+                      }}>L</a>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Center: article view */}
+        <div key={flashKey} className={article?'scan-flash':''} style={{flex:1,overflow:'auto',padding:'24px 32px'}}>
+          {!article && !unknown && <PCEmpty agency={CTX.agency} pendingActions={pendingActions} historyCount={history.length} />}
+          {unknown && (
+            <div style={{maxWidth:560,margin:'80px auto',padding:'28px',background:T.card,borderRadius:16,border:`1px solid ${T.border}`,textAlign:'center'}}>
+              <div style={{fontSize:18,fontWeight:800,color:T.t1}}>Code <span style={{color:T.accent,letterSpacing:1}} className="tn">"{unknown}"</span> non trouve</div>
+              <div style={{fontSize:13,color:T.t2,marginTop:8}}>Pas dans la base agence ni au catalogue.</div>
+              <div style={{display:'flex',gap:8,justifyContent:'center',marginTop:18}}>
+                <button onClick={()=>{setUnknown(null);setQ(unknown);inputRef.current?.focus();}} style={pcBtn}>Modifier</button>
+                <button onClick={()=>{setUnknown(null);inputRef.current?.focus();}} style={{...pcBtn,background:T.accent,color:'#1a0e05'}}>Rescanner</button>
+              </div>
+            </div>
+          )}
+          {article && <PCArticle a={article} actions={actions[article.code]||[]} onAddAction={(k,l,d,e)=>pcAddAction(article.code,k,l,d,e)} onClose={()=>setCode(null)} />}
+        </div>
+
+        {/* Right: history panel (collapsible) */}
+        {historyOpen && (
+          <div style={{width:300,flexShrink:0,borderLeft:`1px solid ${T.border}`,background:'#0c0f15',display:'flex',flexDirection:'column'}}>
+            <div style={{padding:'14px 16px',borderBottom:`1px solid ${T.border}`,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <div>
+                <div style={{fontSize:11,fontWeight:800,letterSpacing:.6,color:T.t1}}>Historique session</div>
+                <div style={{fontSize:10,color:T.t3,marginTop:2}}>{history.length} scan{history.length>1?'s':''}</div>
+              </div>
+              <button onClick={()=>setHistory([])} disabled={!history.length} style={{background:'none',border:'none',color:history.length?T.t3:'#3a3f4d',fontSize:11,cursor:history.length?'pointer':'default',fontWeight:700}}>Vider</button>
+            </div>
+            <div style={{flex:1,overflow:'auto',padding:'8px 8px'}}>
+              {history.length === 0 && <div style={{padding:'30px 14px',textAlign:'center',color:T.t3,fontSize:11}}>Aucun scan pour le moment.</div>}
+              {history.map((h, i) => {
+                const a = ARTICLES.find(x=>x.code===h.code);
+                const v = a ? VC[a.verdict] : VC.ok;
+                const t = new Date(h.ts);
+                const tStr = t.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+                return (
+                  <button key={i} onClick={()=>a && setCode(a.code)} style={{
+                    width:'100%',display:'flex',alignItems:'center',gap:8,padding:'8px 10px',
+                    background:code===h.code?T.card:'transparent',borderRadius:8,border:'none',color:T.t1,textAlign:'left',cursor:'pointer',marginBottom:1,
+                  }}>
+                    <span style={{fontSize:9,color:T.t3,width:38,fontWeight:600}} className="tn">{tStr}</span>
+                    <span style={{width:6,height:6,borderRadius:99,background:v.edge,flexShrink:0}} />
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:11,color:T.t3,fontWeight:600}} className="tn">{h.code}</div>
+                      <div style={{fontSize:11,color:T.t1,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a?a.lib:'?'}</div>
+                    </div>
+                    <span style={{fontSize:9,color:T.t3}}>{h.mode==='scan'?'S':'R'}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Hint footer */}
+      <div style={{height:28,padding:'0 18px',display:'flex',alignItems:'center',gap:18,fontSize:10,color:T.t3,fontWeight:600,background:'#0d1016',borderTop:`1px solid ${T.border}`,flexShrink:0}}>
+        <span>Mode PC · {CTX.agency}</span>
+        <span><kbd style={kbd}>/</kbd> recherche</span>
+        <span><kbd style={kbd}>Esc</kbd> retour</span>
+        <span style={{marginLeft:'auto'}}>Le clavier va toujours dans le champ de scan.</span>
+      </div>
+    </div>
+  );
+}
+
+if (IS_PC) document.body.classList.add('pc-mode');
+ReactDOM.createRoot(document.getElementById('root')).render(IS_PC ? <PCApp /> : <App />);
 </script>
 </body>
 </html>
