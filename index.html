@@ -896,15 +896,17 @@ function ArticleScreen({ t, code, onBack, onActions, onScan, addedActions, invMo
           </div>
 
           {/* Empl + prix */}
-          <div style={{marginTop:6,display:'grid',gridTemplateColumns:'1.4fr 1fr',gap:6}}>
+          <div style={{marginTop:6,display:'grid',gridTemplateColumns: a.prix != null ? '1.4fr 1fr' : '1fr',gap:6}}>
             <div style={{padding:'10px 14px',background:'#0a0c10',borderRadius:12}}>
               <div style={{fontSize:9,color:T.t3,textTransform:'uppercase',letterSpacing:.8,fontWeight:700}}>Emplacement</div>
               <div style={{fontSize:18,fontWeight:800,color:T.accent,marginTop:2}}>{a.empl}</div>
             </div>
-            <button onClick={()=>setPriceShown(p=>!p)} style={{padding:'10px 14px',background:'#0a0c10',borderRadius:12,border:'none',color:T.t1,textAlign:'left',cursor:'pointer'}}>
-              <div style={{fontSize:9,color:T.t3,textTransform:'uppercase',letterSpacing:.8,fontWeight:700}}>Prix moy. <span style={{color:T.t3,fontWeight:500,fontSize:8}}>· {a.marge}%</span></div>
-              <div style={{fontSize:15,fontWeight:700,color:T.t1,marginTop:2,filter:priceShown?'none':'blur(5px)',transition:'filter .15s'}} className="tn">{a.prix.toFixed(2)} €</div>
-            </button>
+            {a.prix != null && (
+              <button onClick={()=>setPriceShown(p=>!p)} style={{padding:'10px 14px',background:'#0a0c10',borderRadius:12,border:'none',color:T.t1,textAlign:'left',cursor:'pointer'}}>
+                <div style={{fontSize:9,color:T.t3,textTransform:'uppercase',letterSpacing:.8,fontWeight:700}}>Prix moy. <span style={{color:T.t3,fontWeight:500,fontSize:8}}>· {a.marge}%</span></div>
+                <div style={{fontSize:15,fontWeight:700,color:T.t1,marginTop:2,filter:priceShown?'none':'blur(5px)',transition:'filter .15s'}} className="tn">{a.prix.toFixed(2)} €</div>
+              </button>
+            )}
           </div>
         </div>
 
@@ -2073,7 +2075,7 @@ function InvSummaryScreen({ zone, codes, counts, extras={}, onBack, onPush, onPi
                     </div>
                     <div style={{textAlign:'right',flexShrink:0}}>
                       <div style={{padding:'4px 10px',borderRadius:99,background:c+'22',color:c,fontSize:14,fontWeight:900}} className="tn">{ecart>0?'+':''}{ecart}</div>
-                      <div style={{fontSize:10,color:T.t3,marginTop:3}} className="tn">{(ecart*a.prix).toFixed(2)} €</div>
+                      <div style={{fontSize:10,color:T.t3,marginTop:3}} className="tn">{a.prix != null ? (ecart*a.prix).toFixed(2) + ' €' : ''}</div>
                     </div>
                   </button>
                 );
