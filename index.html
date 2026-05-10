@@ -412,12 +412,13 @@ function App() {
   const addAction = (code, kind, label, dest, eta) => {
     const id = 'a' + Math.random().toString(36).slice(2,8);
     const a = ARTICLES.find(x=>x.code===code);
-    const prev = a ? {stock:a.stock, min:a.min, max:a.max} : null;
+    const prev = a ? {stock:a.stock, min:a.min, max:a.max, empl:a.empl} : null;
     // Appliquer l'effet visuel immédiat
     if (a) {
       if (kind === 'stock') { const m = label.match(/→\s*(\d+)/); if (m) a.stock = parseInt(m[1]); }
       if (kind === 'corriger_stock') { const m = label.match(/stock\s*→\s*(\d+)/); a.stock = m ? parseInt(m[1]) : 0; }
       if (kind === 'erp') { a.min = a._raw?.nouveauMin ?? a.min; a.max = a._raw?.nouveauMax ?? a.max; }
+      if (kind === 'emp') { const m = label.match(/→\s*(.+)\)/); if (m) a.empl = m[1].trim(); }
       _refreshArticle(a);
     }
     const entry = { id, kind, label, dest, eta, ts:Date.now(), status:'pending', _prev:prev };
@@ -440,7 +441,7 @@ function App() {
       const removed = (ac[code]||[]).find(x => x.id === id);
       if (removed?._prev) {
         const a = ARTICLES.find(x=>x.code===code);
-        if (a) { a.stock = removed._prev.stock; a.min = removed._prev.min; a.max = removed._prev.max; _refreshArticle(a); }
+        if (a) { a.stock = removed._prev.stock; a.min = removed._prev.min; a.max = removed._prev.max; if (removed._prev.empl) a.empl = removed._prev.empl; _refreshArticle(a); }
       }
       const next = {...ac};
       next[code] = (next[code]||[]).filter(x => x.id !== id);
