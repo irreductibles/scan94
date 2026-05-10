@@ -957,6 +957,21 @@ function ArticleScreen({ t, code, onBack, onActions, onScan, addedActions, invMo
             <Ico d={ICONS.fwd} s={20} sw={2.8} />
           </button>
         )}
+        {/* Secondary actions (Corriger ERP) — affichées en prioritaire */}
+        {!invMode && (a.secondary||[]).filter(s=>!addedActions.some(x=>x.kind===s.kind)).map((s,i) => (
+          <button key={i} onClick={onActions} style={{
+            width:'100%',marginTop:8,padding:'12px 14px',borderRadius:14,border:'none',
+            background:'#f59e0b',color:'#0a0c10',textAlign:'left',
+            display:'flex',alignItems:'center',gap:12,
+          }}>
+            <div style={{width:40,height:40,borderRadius:10,background:'rgba(0,0,0,.18)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:16,fontWeight:800}}>ERP</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:800}}>{s.label}</div>
+              <div style={{fontSize:11,opacity:.75,marginTop:1}}>{s.sub}</div>
+            </div>
+            <Ico d={ICONS.fwd} s={18} sw={2.5} />
+          </button>
+        ))}
         {!invMode && (!a.primary || addedActions.some(x=>x.kind===a.primary.kind)) && addedActions.length === 0 && (
           <button onClick={onActions} style={{
             width:'100%',marginTop:12,padding:'13px 14px',borderRadius:12,
