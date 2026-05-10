@@ -387,10 +387,24 @@ function App() {
     zoneArts.sort((a,b) => ((a.stock<0?-1:verdictPrio[a.verdict]??9)) - ((b.stock<0?-1:verdictPrio[b.verdict]??9)));
     openArticle(zoneArts[0].code, tourZone);
   };
+  const _refreshArticle = (a) => {
+    a.verdict = _verdict(a.stock, a.min, a.max);
+    a.primary = _primary(a.verdict, a.stock, a.min, a.max, a.statut);
+    a.secondary = _secondary(a._raw || {});
+  };
   const addAction = (code, kind, label, dest, eta) => {
     const id = 'a' + Math.random().toString(36).slice(2,8);
-    const entry = { id, kind, label, dest, eta, ts:Date.now(), status:'pending' };
-    setActions(a => ({...a, [code]: [...(a[code]||[]), entry]}));
+    const a = ARTICLES.find(x=>x.code===code);
+    const prev = a ? {stock:a.stock, min:a.min, max:a.max} : null;
+    // Appliquer l'effet visuel immédiat
+    if (a) {
+      if (kind === 'stock') { const m = label.match(/→\s*(\d+)/); if (m) a.stock = parseInt(m[1]); }
+      if (kind === 'corriger_stock') { a.stock = 0; }
+      if (kind === 'erp') { a.min = a._raw?.nouveauMin ?? a.min; a.max = a._raw?.nouveauMax ?? a.max; }
+      _refreshArticle(a);
+    }
+    const entry = { id, kind, label, dest, eta, ts:Date.now(), status:'pending', _prev:prev };
+    setActions(ac => ({...ac, [code]: [...(ac[code]||[]), entry]}));
     setSheet({ type:'confirm', code, id, label, dest, eta });
   };
   const validateAction = (code, id) => {
@@ -401,8 +415,13 @@ function App() {
     });
   };
   const undoAction = (code, id) => {
-    setActions(a => {
-      const next = {...a};
+    setActions(ac => {
+      const removed = (ac[code]||[]).find(x => x.id === id);
+      if (removed?._prev) {
+        const a = ARTICLES.find(x=>x.code===code);
+        if (a) { a.stock = removed._prev.stock; a.min = removed._prev.min; a.max = removed._prev.max; _refreshArticle(a); }
+      }
+      const next = {...ac};
       next[code] = (next[code]||[]).filter(x => x.id !== id);
       if (next[code].length === 0) delete next[code];
       return next;
