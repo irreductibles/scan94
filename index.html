@@ -2588,18 +2588,24 @@ function EmplacementSheet({ code, onClose, onPick }) {
           fontSize:14,fontWeight:800,letterSpacing:.3,marginBottom:14,
         }}>{isValid ? `Déplacer · ${a.empl} → ${val}` : 'Saisir un emplacement'}</button>
 
-        {nearby.length > 0 && (
-          <>
-            <div style={sectionLabel}>Allée {allee} · voisins</div>
-            <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:12}}>
-              {nearby.map(e => (
-                <button key={e} onClick={()=>setVal(e)} style={emplChip(val===e)}>{e}</button>
-              ))}
-            </div>
-          </>
-        )}
+        {(() => {
+          const q = val.toUpperCase();
+          const filtered = q ? allEmpl.filter(e => e !== a.empl && e.toUpperCase().includes(q)) : nearby;
+          const label = q ? `${filtered.length} résultat${filtered.length>1?'s':''}` : `Allée ${allee} · voisins`;
+          return filtered.length > 0 ? (
+            <>
+              <div style={sectionLabel}>{label}</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:12}}>
+                {filtered.slice(0,30).map(e => (
+                  <button key={e} onClick={()=>setVal(e)} style={emplChip(val===e)}>{e}</button>
+                ))}
+                {filtered.length > 30 && <span style={{fontSize:10,color:T.t3,padding:'4px 8px'}}>+{filtered.length-30}</span>}
+              </div>
+            </>
+          ) : null;
+        })()}
 
-        {others.length > 0 && (
+        {!val && others.length > 0 && (
           <>
             <div style={sectionLabel}>Autres allées</div>
             <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:14}}>
