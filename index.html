@@ -690,6 +690,16 @@ function App() {
           });
           showToast('Étiquette marquée imprimée');
         }}
+        onMarkAllPrinted={()=>{
+          setActions(prev => {
+            const next = {};
+            Object.keys(prev).forEach(c => {
+              next[c] = prev[c].map(x => x.kind==='etiquette' && x.status==='pending' ? {...x, status:'validee'} : x);
+            });
+            return next;
+          });
+          showToast('Toutes les étiquettes marquées imprimées');
+        }}
       />}
 
       {toast && <Toast msg={toast} />}
@@ -2032,24 +2042,25 @@ function JournalSheet({ onClose, actions, onPick, onUndo, onValidate, onPush, on
 }
 
 // ── LabelsSheet — étiquettes manquantes : aperçu + export CSV Legallais ──
-function LabelsSheet({ onClose, actions, onMarkPrinted }) {
+function LabelsSheet({ onClose, actions, onMarkPrinted, onMarkAllPrinted }) {
   const items = [];
   Object.keys(actions).forEach(c => actions[c].forEach(x => {
-    if (x.kind === 'etiquette' && x.status !== 'refusee') items.push({ ...x, code: c });
+    if (x.kind === 'etiquette') items.push({ ...x, code: c });
   }));
   const seen = new Set();
   const list = items.filter(x => { if (seen.has(x.code)) return false; seen.add(x.code); return true; })
     .map(x => {
       const a = ARTICLES.find(y=>y.code===x.code);
-      return { ...x, lib: a?.lib || '—', ref: a?._raw?._refFourn || a?.ref || '', status: x.status };
+      return { ...x, lib: a?.lib || '—', status: x.status };
     });
-  const pendingN = list.filter(x => x.status === 'pending').length;
+  const pending = list.filter(x => x.status === 'pending');
+  const printed = list.filter(x => x.status === 'validee');
 
   const csv = useMemo(() => {
     let s = '"Code article","Quantité"\n';
-    list.forEach(x => { s += `"${x.code}","1"\n`; });
+    pending.forEach(x => { s += `"${x.code}","1"\n`; });
     return s;
-  }, [list]);
+  }, [pending]);
 
   const downloadCsv = () => {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -2057,9 +2068,11 @@ function LabelsSheet({ onClose, actions, onMarkPrinted }) {
     const a = document.createElement('a');
     a.href = url; a.download = 'commande-rapide-legallais.csv';
     a.click(); setTimeout(()=>URL.revokeObjectURL(url), 500);
+    onMarkAllPrinted();
   };
   const copyCsv = async () => {
     try { await navigator.clipboard.writeText(csv); } catch(e) {}
+    onMarkAllPrinted();
   };
 
   return (
@@ -2067,69 +2080,75 @@ function LabelsSheet({ onClose, actions, onMarkPrinted }) {
       <div style={{padding:'4px 14px 0'}}>
         {list.length === 0 ? (
           <div style={{textAlign:'center',padding:'30px 20px',color:T.t2}}>
-            <div style={{fontSize:13}}>Aucune étiquette à imprimer</div>
+            <div style={{fontSize:13}}>Aucune étiquette en attente</div>
             <div style={{fontSize:11,color:T.t3,marginTop:6}}>Ajoute "Étiquette manquante" sur une fiche article</div>
           </div>
         ) : (
           <>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:12}}>
-              <div style={{padding:'10px 12px',background:'rgba(167,139,250,.08)',borderRadius:10,border:'1px solid rgba(167,139,250,.3)'}}>
-                <div style={{fontSize:22,fontWeight:900,color:'#c4b5fd'}} className="tn">{list.length}</div>
-                <div style={{fontSize:10,color:T.t2,marginTop:1}}>article{list.length>1?'s':''} à étiqueter</div>
+            {pending.length > 0 && (<>
+              <div style={{fontSize:10,color:'#c4b5fd',fontWeight:800,letterSpacing:.6,textTransform:'uppercase',padding:'4px 4px 8px',display:'flex',alignItems:'center',gap:6}}>
+                <span>À imprimer</span><span style={{color:T.t3,fontWeight:600}}>· {pending.length}</span>
               </div>
-              <div style={{padding:'10px 12px',background:'rgba(251,191,36,.08)',borderRadius:10,border:'1px solid rgba(251,191,36,.3)'}}>
-                <div style={{fontSize:22,fontWeight:900,color:'#fbbf24'}} className="tn">{pendingN}</div>
-                <div style={{fontSize:10,color:T.t2,marginTop:1}}>en attente d'impression</div>
-              </div>
-            </div>
-
-            <div style={{fontSize:10,color:T.t3,fontWeight:800,letterSpacing:.6,textTransform:'uppercase',padding:'4px 4px 8px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <span>À étiqueter</span>
-              <span style={{color:T.t3,fontWeight:600,textTransform:'none',letterSpacing:0,fontSize:10}}>Tape ✓ une fois imprimée</span>
-            </div>
-            {list.map((x,i)=>(
-              <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:12,background:'rgba(167,139,250,.05)',border:'1px solid rgba(167,139,250,.18)',marginBottom:6}}>
-                <Dot c="#a78bfa" s={7} />
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,color:T.t1,fontFamily:'ui-monospace,Menlo,monospace',fontWeight:700}}>{x.code}</div>
-                  <div style={{fontSize:11,color:T.t2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:1}}>{x.lib}</div>
+              {pending.map((x,i)=>(
+                <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:12,background:'rgba(167,139,250,.05)',border:'1px solid rgba(167,139,250,.18)',marginBottom:6}}>
+                  <Dot c="#a78bfa" s={7} />
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,color:T.t1,fontFamily:'ui-monospace,Menlo,monospace',fontWeight:700}}>{x.code}</div>
+                    <div style={{fontSize:11,color:T.t2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:1}}>{x.lib}</div>
+                  </div>
+                  <button onClick={()=>onMarkPrinted(x.code, x.id)} style={{
+                    padding:'8px 12px',borderRadius:10,
+                    border:'1px solid rgba(34,197,94,.35)',
+                    background:'rgba(34,197,94,.12)',color:'#86efac',
+                    fontSize:11,fontWeight:800,letterSpacing:.3,
+                    display:'flex',alignItems:'center',gap:5,whiteSpace:'nowrap',
+                  }}>
+                    <Ico d={ICONS.check} s={12} sw={2.5} />
+                    Faite
+                  </button>
                 </div>
-                <button onClick={()=>onMarkPrinted(x.code, x.id)} style={{
-                  padding:'10px 14px',borderRadius:10,
-                  border: x.status==='pending' ? '1px solid rgba(167,139,250,.35)' : '1px solid rgba(34,197,94,.35)',
-                  background: x.status==='pending' ? 'rgba(167,139,250,.15)' : 'rgba(34,197,94,.18)',
-                  color: x.status==='pending' ? '#c4b5fd' : '#86efac',
-                  fontSize:12,fontWeight:800,letterSpacing:.3,
-                  display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap',
-                }}>
-                  <Ico d={x.status==='pending' ? ICONS.tag : ICONS.check} s={13} sw={2.5} />
-                  {x.status==='pending' ? 'À imprimer' : 'Imprimée'}
-                </button>
-              </div>
-            ))}
+              ))}
 
-            <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${T.border}`}}>
-              <div style={{fontSize:10,color:T.t3,fontWeight:800,letterSpacing:.6,textTransform:'uppercase',padding:'0 4px 8px'}}>Commande Legallais</div>
-              <div style={{padding:'10px 12px',background:'rgba(34,197,94,.06)',border:'1px solid rgba(34,197,94,.2)',borderRadius:10,marginBottom:8}}>
-                <div style={{fontSize:11,color:'#86efac',fontWeight:700,letterSpacing:.3,marginBottom:4}}>Format commande rapide · CSV</div>
-                <div style={{fontSize:11,color:T.t2,lineHeight:1.5}}>Importe le CSV sur <strong style={{color:T.t1}}>legallais.com</strong> → Mon compte → Commande rapide → Importer fichier.</div>
+              <div style={{marginTop:10,paddingTop:12,borderTop:`1px solid ${T.border}`}}>
+                <div style={{fontSize:10,color:T.t3,fontWeight:800,letterSpacing:.6,textTransform:'uppercase',padding:'0 4px 8px'}}>Commande Legallais</div>
+                <div style={{padding:'10px 12px',background:'rgba(34,197,94,.06)',border:'1px solid rgba(34,197,94,.2)',borderRadius:10,marginBottom:8}}>
+                  <div style={{fontSize:11,color:'#86efac',fontWeight:700,letterSpacing:.3,marginBottom:4}}>Format commande rapide · CSV</div>
+                  <div style={{fontSize:11,color:T.t2,lineHeight:1.5}}>Importe sur <strong style={{color:T.t1}}>legallais.com</strong> → Mon compte → Commande rapide → Importer fichier.</div>
+                </div>
+                <div style={{display:'flex',gap:6}}>
+                  <button onClick={copyCsv} style={{
+                    flex:1,padding:'12px',borderRadius:11,
+                    background:'rgba(255,255,255,.04)',color:T.t1,fontSize:12,fontWeight:700,
+                    border:`1px solid ${T.border}`,
+                  }}>Copier CSV</button>
+                  <button onClick={downloadCsv} style={{
+                    flex:2,padding:'12px',borderRadius:11,border:'none',
+                    background:'#fff',color:'#000',fontSize:13,fontWeight:800,letterSpacing:.2,
+                    display:'flex',alignItems:'center',justifyContent:'center',gap:8,
+                  }}>
+                    <Ico d={ICONS.download} s={15} sw={2.5} />
+                    Télécharger · {pending.length} réf{pending.length>1?'s':''}
+                  </button>
+                </div>
               </div>
-              <div style={{display:'flex',gap:6}}>
-                <button onClick={copyCsv} style={{
-                  flex:1,padding:'12px',borderRadius:11,
-                  background:'rgba(255,255,255,.04)',color:T.t1,fontSize:12,fontWeight:700,
-                  border:`1px solid ${T.border}`,
-                }}>Copier CSV</button>
-                <button onClick={downloadCsv} style={{
-                  flex:2,padding:'12px',borderRadius:11,border:'none',
-                  background:'#fff',color:'#000',fontSize:13,fontWeight:800,letterSpacing:.2,
-                  display:'flex',alignItems:'center',justifyContent:'center',gap:8,
-                }}>
-                  <Ico d={ICONS.download} s={15} sw={2.5} />
-                  Télécharger CSV
-                </button>
+            </>)}
+
+            {printed.length > 0 && (
+              <div style={{marginTop: pending.length > 0 ? 14 : 0}}>
+                <div style={{fontSize:10,color:'#86efac',fontWeight:800,letterSpacing:.6,textTransform:'uppercase',padding:'4px 4px 8px',display:'flex',alignItems:'center',gap:6}}>
+                  <span>Imprimées</span><span style={{color:T.t3,fontWeight:600}}>· {printed.length}</span>
+                </div>
+                {printed.map((x,i)=>(
+                  <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',borderRadius:12,background:'rgba(34,197,94,.04)',border:'1px solid rgba(34,197,94,.12)',marginBottom:4,opacity:.6}}>
+                    <Ico d={ICONS.check} s={13} sw={2.5} />
+                    <div style={{flex:1,minWidth:0}}>
+                      <span style={{fontSize:12,color:T.t2,fontFamily:'ui-monospace,Menlo,monospace',fontWeight:600}}>{x.code}</span>
+                      <span style={{fontSize:11,color:T.t3,marginLeft:8}}>{x.lib}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
+            )}
           </>
         )}
       </div>
