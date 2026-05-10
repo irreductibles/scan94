@@ -2095,13 +2095,15 @@ function LabelsSheet({ onClose, actions, onMarkPrinted }) {
                   <div style={{fontSize:11,color:T.t2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:1}}>{x.lib}</div>
                 </div>
                 <button onClick={()=>onMarkPrinted(x.code, x.id)} style={{
-                  padding:'10px 14px',borderRadius:10,border:'1px solid rgba(34,197,94,.35)',
-                  background:'rgba(34,197,94,.18)',color:'#86efac',
+                  padding:'10px 14px',borderRadius:10,
+                  border: x.status==='pending' ? '1px solid rgba(167,139,250,.35)' : '1px solid rgba(34,197,94,.35)',
+                  background: x.status==='pending' ? 'rgba(167,139,250,.15)' : 'rgba(34,197,94,.18)',
+                  color: x.status==='pending' ? '#c4b5fd' : '#86efac',
                   fontSize:12,fontWeight:800,letterSpacing:.3,
                   display:'flex',alignItems:'center',gap:6,whiteSpace:'nowrap',
                 }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                  Imprimée
+                  <Ico d={x.status==='pending' ? ICONS.tag : ICONS.check} s={13} sw={2.5} />
+                  {x.status==='pending' ? 'À imprimer' : 'Imprimée'}
                 </button>
               </div>
             ))}
