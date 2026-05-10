@@ -460,7 +460,8 @@ function App() {
     showToast(`✓ ${ecarts.length} correction${ecarts.length>1?'s':''} envoyée${ecarts.length>1?'s':''} à l'ERP`);
   };
   const totalActions = Object.values(actions).reduce((n,a)=>n+a.length,0);
-  const pendingActions = Object.values(actions).reduce((n,a)=>n+a.filter(x=>x.status==='pending'&&x.kind!=='etiquette').length,0);
+  const hasEtiquettes = Object.values(actions).some(a=>a.some(x=>x.kind==='etiquette'&&x.status==='pending'));
+  const pendingActions = Object.values(actions).reduce((n,a)=>n+a.filter(x=>x.status==='pending'&&x.kind!=='etiquette').length,0) + (hasEtiquettes?1:0);
   const invDoneCount = INV_CODES.filter(c => invCounts[c] != null).length;
 
   return (
