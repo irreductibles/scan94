@@ -74,7 +74,10 @@ const AGENCY = (() => {
 })();
 // Config collègue (chargé depuis config.json si dispo)
 let SCAN_CONFIG = {};
-fetch('config.json',{cache:'no-cache'}).then(r=>r.ok?r.json():{}).catch(()=>({})).then(c=>{SCAN_CONFIG=c;});
+fetch('config.json',{cache:'no-cache'}).then(r=>r.ok?r.json():{}).catch(()=>({})).then(c=>{
+  SCAN_CONFIG=c;
+  if (c.retour===false) { ARTICLES = loadEngineData(window._rawEngineData||ENGINE_DATA); document.dispatchEvent(new Event('prisme-data')); }
+});
 
 const CTX = {
   greeting: AGENCY,
@@ -139,11 +142,11 @@ function _primary(verdict, stock, min, max, statut) {
   // Stock négatif → corriger le stock ERP, vider MIN/MAX
   if (stock < 0) return { kind:'corriger_stock', label:'Corriger stock', qty: 0, sub:`Stock ERP : ${stock} · vérifier le rayon` };
   // Fin de série → ne pas commander, retourner si stock > 0
-  if (finDeVie && stock > 0 && SCAN_CONFIG.retour !== false) return { kind:'retour', label:'Retour centrale', qty: stock, sub:`Fin de série · solder le stock` };
+  if (finDeVie && stock > 0) return { kind:'retour', label:'Retour centrale', qty: stock, sub:`Fin de série · solder le stock` };
   if (finDeVie) return null; // fin de série + stock 0 → rien à faire
   if (verdict === 'rupture')  return { kind:'commander', label:'Commander', qty: Math.max(min, 1), sub:`Stock ${stock} < MIN ${min}` };
   if (verdict === 'sousmin')  return { kind:'commander', label:'Commander', qty: min - stock,     sub:`Stock ${stock} < MIN ${min}` };
-  if (verdict === 'surstock' && SCAN_CONFIG.retour !== false) return { kind:'retour', label:'Retour centrale', qty: stock - max, sub:`${stock - max} pcs au-dessus du MAX` };
+  if (verdict === 'surstock') return { kind:'retour', label:'Retour centrale', qty: stock - max, sub:`${stock - max} pcs au-dessus du MAX` };
   return null;
 }
 function _secondary(it) {
@@ -161,8 +164,9 @@ function loadEngineData(engine) {
   if (!Array.isArray(engine)) return [];
   return engine.map(it => {
     const stock = it.stockActuel ?? 0;
-    const min   = it.nouveauMin   ?? 0;
-    const max   = it.nouveauMax   ?? 0;
+    const useErp = SCAN_CONFIG.retour === false;
+    const min   = useErp ? (it.ancienMin ?? 0) : (it.nouveauMin ?? 0);
+    const max   = useErp ? (it.ancienMax ?? 0) : (it.nouveauMax ?? 0);
     const eMin  = it.ancienMin    ?? 0;
     const eMax  = it.ancienMax    ?? 0;
     const verdict = _verdict(stock, min, max);
