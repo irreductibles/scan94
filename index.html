@@ -550,9 +550,9 @@ function App() {
         if (fromInv && invMode && invZone && !INV_CODES.includes(c) && ARTICLES.find(x=>x.code===c)) {
           const a = ARTICLES.find(x=>x.code===c);
           setInvExtras(e => ({...e, [c]: (e[c] ?? a.stock)}));
-          showToast(`📍 Hors zone : ${c} ajouté aux extras`);
-          setPage('invList');
-        } else { openArticle(c); }
+          showToast(`📍 Hors zone — fiche ouverte`);
+        }
+        openArticle(c);
       }} onBatch={(items)=>{
         setSheet(null);
         if (items.length === 0) return;
