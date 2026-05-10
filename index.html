@@ -2544,7 +2544,7 @@ function PCArticle({ a, actions, onAddAction, onClose }) {
         <div style={{padding:'4px 10px',borderRadius:99,background:v.bg,color:v.fg,fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:'uppercase'}}>● {v.label}</div>
         <div style={{fontSize:13,color:T.t3,fontWeight:600,letterSpacing:.5}} className="tn">{a.code}</div>
         <CopyBtn code={a.code} large />
-        <a href={`http://www.legallais.com/articles/${a.code}`} target="_blank" rel="noopener" title="Ouvrir sur legallais.com" style={{
+        <a href={`http://www.legallais.com/article/${a.code}`} target="_blank" rel="noopener" title="Ouvrir sur legallais.com" style={{
           padding:'5px 10px',borderRadius:7,border:`1px solid ${T.border}`,background:T.card,color:T.t2,
           fontSize:11,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,letterSpacing:.3,textDecoration:'none',
         }}>legallais.com</a>
@@ -2863,7 +2863,7 @@ function PCApp() {
                         </div>
                       </button>
                       <CopyBtn code={a.code} />
-                      <a href={`http://www.legallais.com/articles/${a.code}`} target="_blank" rel="noopener" title="Voir sur legallais.com" onClick={e=>e.stopPropagation()} style={{
+                      <a href={`http://www.legallais.com/article/${a.code}`} target="_blank" rel="noopener" title="Voir sur legallais.com" onClick={e=>e.stopPropagation()} style={{
                         width:36,borderLeft:`1px solid ${T.border}`,background:'rgba(255,255,255,.02)',
                         color:T.t3,fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,textDecoration:'none',
                       }}>L</a>
