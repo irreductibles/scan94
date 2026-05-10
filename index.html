@@ -453,7 +453,7 @@ function App() {
 
       {page === 'invList' && <InvListScreen
         zone={INV_ZONE}
-        codes={[...INV_CODES, ...Object.keys(invExtras).filter(c => !INV_CODES.includes(c))]}
+        codes={[...INV_CODES, ...Object.keys(invExtras).filter(c => !INV_CODES.includes(c)), ...Object.keys(invCounts).filter(c => !INV_CODES.includes(c) && !(c in invExtras))]}
         counts={invCounts}
         onPick={openArticle}
         onExit={exitInv}
@@ -463,7 +463,7 @@ function App() {
 
       {page === 'invSummary' && <InvSummaryScreen
         zone={INV_ZONE}
-        codes={[...INV_CODES, ...Object.keys(invExtras).filter(c => !INV_CODES.includes(c))]}
+        codes={[...INV_CODES, ...Object.keys(invExtras).filter(c => !INV_CODES.includes(c)), ...Object.keys(invCounts).filter(c => !INV_CODES.includes(c) && !(c in invExtras))]}
         counts={invCounts}
         extras={invExtras}
         onBack={()=>setPage('invList')}
@@ -479,6 +479,7 @@ function App() {
             return next;
           });
           showToast(`✓ ${codes.length} article${codes.length>1?'s':''} · emplacement corrigé`);
+          setInvExtras({});
         }}
       />}
 
