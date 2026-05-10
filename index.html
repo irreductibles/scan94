@@ -164,9 +164,8 @@ function loadEngineData(engine) {
   if (!Array.isArray(engine)) return [];
   return engine.map(it => {
     const stock = it.stockActuel ?? 0;
-    const useErp = SCAN_CONFIG.retour === false;
-    const min   = useErp ? (it.ancienMin ?? 0) : (it.nouveauMin ?? 0);
-    const max   = useErp ? (it.ancienMax ?? 0) : (it.nouveauMax ?? 0);
+    const min   = it.ancienMin ?? 0;
+    const max   = it.ancienMax ?? 0;
     const eMin  = it.ancienMin    ?? 0;
     const eMax  = it.ancienMax    ?? 0;
     const verdict = _verdict(stock, min, max);
