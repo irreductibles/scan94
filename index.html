@@ -312,7 +312,7 @@ function App() {
   const t = CTX;
   const [offline, setOffline] = useState(false);
   // Re-render quand hydrateFromIDB() remplace ARTICLES.
-  const [, bump] = useState(0);
+  const [dataVersion, bump] = useState(0);
   useEffect(() => {
     const h = () => bump(v => v + 1);
     window.addEventListener('prisme-data', h);
@@ -333,7 +333,7 @@ function App() {
   const INV_ZONE = invZone || '—';
   const INV_CODES = useMemo(() => invZone
     ? ARTICLES.filter(a => (a.empl||'').split('-')[0] === invZone).map(a=>a.code)
-    : [], [invZone]);
+    : [], [invZone, dataVersion]);
   const [invCounts, setInvCounts] = useState(() => {
     try { return JSON.parse(localStorage.getItem('prisme_inv_counts')||'{}'); } catch(e) { return {}; }
   });
