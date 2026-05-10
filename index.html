@@ -472,7 +472,13 @@ function App() {
         onValidExtras={()=>{
           const codes = Object.keys(invExtras);
           codes.forEach(c => { const a = ARTICLES.find(x=>x.code===c); if (a) a.empl = invZone; });
-          showToast(`✓ ${codes.length} emplacement${codes.length>1?'s':''} corrigé${codes.length>1?'s':''}`);
+          // Ajouter dans invCounts comme conformes (stock ERP = compté)
+          setInvCounts(prev => {
+            const next = {...prev};
+            codes.forEach(c => { const a = ARTICLES.find(x=>x.code===c); if (a) next[c] = invExtras[c] ?? a.stock; });
+            return next;
+          });
+          showToast(`✓ ${codes.length} article${codes.length>1?'s':''} vérifié${codes.length>1?'s':''}`);
           setInvExtras({});
         }}
       />}
