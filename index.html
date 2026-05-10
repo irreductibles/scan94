@@ -72,6 +72,10 @@ const AGENCY = (() => {
     return m ? m[0].toUpperCase() : 'AG93';
   } catch (e) { return 'AG93'; }
 })();
+// Config collègue (chargé depuis config.json si dispo)
+let SCAN_CONFIG = {};
+fetch('config.json',{cache:'no-cache'}).then(r=>r.ok?r.json():{}).catch(()=>({})).then(c=>{SCAN_CONFIG=c;});
+
 const CTX = {
   greeting: AGENCY,
   agency: AGENCY,
@@ -129,10 +133,16 @@ function _verdict(stock, min, max) {
   if (max > 0 && stock > max) return 'surstock';
   return 'ok';
 }
-function _primary(verdict, stock, min, max) {
+function _primary(verdict, stock, min, max, statut) {
+  const finDeVie = /fin de (s[ée]rie|stock|catalogue)/i.test(statut||'');
+  // Stock négatif → corriger le stock ERP, vider MIN/MAX
+  if (stock < 0) return { kind:'corriger_stock', label:'Corriger stock', qty: 0, sub:`Stock ERP : ${stock} · vérifier le rayon` };
+  // Fin de série → ne pas commander, retourner si stock > 0
+  if (finDeVie && stock > 0 && SCAN_CONFIG.retour !== false) return { kind:'retour', label:'Retour centrale', qty: stock, sub:`Fin de série · solder le stock` };
+  if (finDeVie) return null; // fin de série + stock 0 → rien à faire
   if (verdict === 'rupture')  return { kind:'commander', label:'Commander', qty: Math.max(min, 1), sub:`Stock ${stock} < MIN ${min}` };
   if (verdict === 'sousmin')  return { kind:'commander', label:'Commander', qty: min - stock,     sub:`Stock ${stock} < MIN ${min}` };
-  if (verdict === 'surstock') return { kind:'retour',    label:'Retour centrale', qty: stock - max, sub:`${stock - max} pcs au-dessus du MAX` };
+  if (verdict === 'surstock' && SCAN_CONFIG.retour !== false) return { kind:'retour', label:'Retour centrale', qty: stock - max, sub:`${stock - max} pcs au-dessus du MAX` };
   return null;
 }
 function _secondary(it) {
@@ -141,7 +151,7 @@ function _secondary(it) {
   const eMin = it.ancienMin || 0, eMax = it.ancienMax || 0;
   // Ne pas surfacer "Corriger ERP" tant que PRISME n'a pas calculé un nouveau min/max
   if ((min > 0 || max > 0) && (eMin !== min || eMax !== max)) {
-    sec.push({ kind:'erp', label:'Corriger ERP', sub:`${eMin}/${eMax} → ${min}/${max}` });
+    sec.push({ kind:'erp', label:'Ajuster MIN/MAX', sub:`${eMin}/${eMax} → ${min}/${max}` });
   }
   return sec;
 }
@@ -171,7 +181,7 @@ function loadEngineData(engine) {
       statut:  it.statut || 'Actif',
       verdict,
       sq:      SQ_LABEL[it._sqClassif] || (it._sqVerdict || 'Socle'),
-      primary: _primary(verdict, stock, min, max),
+      primary: _primary(verdict, stock, min, max, it.statut),
       secondary: _secondary(it),
       _raw:    it, // garde l'original sous le coude pour passes futures (W, vitesse, ABC…)
     };
@@ -349,15 +359,25 @@ function App() {
   const [scanContinu, setScanContinu] = useState(false);
   const [toast, setToast] = useState(null);
   const [recents, setRecents] = useState([]);
+  const [tourZone, setTourZone] = useState(null); // zone emplacement en cours de tournée
 
   const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(null), 1800); };
 
-  const openArticle = (code) => {
+  const openArticle = (code, zone) => {
     setArticleCode(code);
+    if (zone !== undefined) setTourZone(zone);
     setRecents(r => [code, ...r.filter(x=>x!==code)].slice(0,6));
     setPage('article');
   };
-  const goHome = () => { setPage('home'); setArticleCode(null); };
+  const goHome = () => { setPage('home'); setArticleCode(null); setTourZone(null); };
+  const nextInZone = () => {
+    if (!tourZone) { goHome(); return; }
+    const zoneArts = ARTICLES.filter(a => a.primary && (a.empl||'—').split('-')[0] === tourZone && !(actions[a.code]?.length > 0) && a.code !== articleCode);
+    if (zoneArts.length === 0) { goHome(); showToast(`✓ Zone ${tourZone} terminée`); return; }
+    const verdictPrio = {rupture:0, sousmin:1, surstock:2, ok:3};
+    zoneArts.sort((a,b) => ((a.stock<0?-1:verdictPrio[a.verdict]??9)) - ((b.stock<0?-1:verdictPrio[b.verdict]??9)));
+    openArticle(zoneArts[0].code, tourZone);
+  };
   const addAction = (code, kind, label, dest, eta) => {
     const id = 'a' + Math.random().toString(36).slice(2,8);
     const entry = { id, kind, label, dest, eta, ts:Date.now(), status:'pending' };
@@ -415,6 +435,7 @@ function App() {
         invTotal={INV_CODES.length}
         invZone={INV_ZONE}
         recents={recents}
+        treatedCodes={actions}
         actionsCount={pendingActions}
         validatedCount={Object.values(actions).reduce((n,a)=>n+a.filter(x=>x.status==='validee').length,0)}
         onActions={()=>setSheet('todo')}
@@ -437,6 +458,8 @@ function App() {
         onActions={()=>setSheet('actions')}
         onAddAction={(kind,label,dest,eta)=>addAction(articleCode,kind,label,dest,eta)}
         onScan={()=>{ setScanContinu(false); setSheet('camera'); }}
+        onNext={tourZone ? nextInZone : null}
+        tourZone={tourZone}
         addedActions={actions[articleCode]||[]}
         invMode={articleInInv}
         invDoneCount={invDoneCount}
@@ -518,6 +541,8 @@ function App() {
         onClose={()=>setSheet(null)}
         onUndo={()=>{ undoAction(sheet.code, sheet.id); setSheet(null); }}
         onHome={()=>{ setSheet(null); goHome(); }}
+        onNext={tourZone ? ()=>{ setSheet(null); nextInZone(); } : null}
+        tourZone={tourZone}
       />}
       {sheet === 'zone' && <ZonePickerSheet onClose={()=>setSheet(null)} onPick={(z)=>{
         setSheet(null); setInvZone(z); setInvMode(true); setPage('invList'); showToast(`Inventaire · zone ${z}`);
@@ -689,26 +714,81 @@ function InvBanner({ doneCount, total=14, zone='B12', onTap, onExit }) {
 }
 
 // ── HOME ──────────────────────────────────────────────────────
-function HomeScreen({ t, onSearch, onScan, onScanDirect, onArticle, onInv, onDouchette, invMode, invDoneCount, invTotal, invZone, onInvOpen, onInvExit, recents, actionsCount, validatedCount, onActions, onMenu }) {
+function HomeScreen({ t, onSearch, onScan, onScanDirect, onArticle, onInv, onDouchette, invMode, invDoneCount, invTotal, invZone, onInvOpen, onInvExit, recents, treatedCodes, actionsCount, validatedCount, onActions, onMenu }) {
+  const verdictPrio = {rupture:0, sousmin:1, surstock:2, ok:3};
+  const todos = ARTICLES.filter(a => a.primary && !(treatedCodes[a.code]?.length > 0)).sort((a,b)=>{
+    const pa = a.stock < 0 ? -1 : (verdictPrio[a.verdict]??9);
+    const pb = b.stock < 0 ? -1 : (verdictPrio[b.verdict]??9);
+    return pa - pb;
+  });
+  const totalQty = todos.reduce((s,a)=>s+(a.primary?.qty||0),0);
+  const ruptures = todos.filter(a=>a.verdict==='rupture').length;
+
+  // Regrouper par emplacement (zone = partie avant le tiret)
+  const emplMap = {};
+  todos.forEach(a => {
+    const zone = (a.empl||'—').split('-')[0] || '—';
+    if (!emplMap[zone]) emplMap[zone] = {neg:0,rupt:0,sousmin:0,surstock:0,total:0,articles:[]};
+    const e = emplMap[zone];
+    e.total++;
+    if (a.stock < 0) e.neg++;
+    if (a.verdict === 'rupture') e.rupt++;
+    else if (a.verdict === 'sousmin') e.sousmin++;
+    else if (a.verdict === 'surstock') e.surstock++;
+    e.articles.push(a);
+  });
+  const emplList = Object.entries(emplMap).sort((a,b) => {
+    const sa = a[1].neg*1000 + a[1].rupt*100 + a[1].sousmin*10 + a[1].surstock;
+    const sb = b[1].neg*1000 + b[1].rupt*100 + b[1].sousmin*10 + b[1].surstock;
+    return sb - sa;
+  });
   return (
     <>
-      <TopBar onMenu={onMenu} sub={`${t.agency} · ${ARTICLES.length} réf${ARTICLES.length>1?'s':''}${DATA_SOURCE!=='idb'?' · '+DATA_SOURCE:''}`} />
+      <TopBar onMenu={onMenu} sub={`${t.agency} · ${t.day} ${t.time}${DATA_SOURCE!=='idb'?' · '+DATA_SOURCE:''}`} />
       {invMode && <InvBanner doneCount={invDoneCount} total={invTotal} zone={invZone} onTap={onInvOpen} onExit={onInvExit} />}
       <div style={{flex:1,padding:'14px 16px 0',overflow:'auto',display:'flex',flexDirection:'column'}}>
-        <div style={{marginBottom:14}}>
-          <div style={{fontSize:11,color:T.t3,fontWeight:600}}>{t.day} · {t.time}</div>
-        </div>
 
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
-          <button onClick={onSearch} style={statCard()}>
-            <div style={{fontSize:26,fontWeight:900,color:T.t1,lineHeight:1}} className="tn">{recents.length}</div>
-            <div style={{fontSize:11,color:T.t2,marginTop:4}}>articles consultés</div>
+        {todos.length > 0 ? (<>
+          <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',marginBottom:10}}>
+            <div>
+              <div style={{fontSize:10,fontWeight:800,letterSpacing:1.2,textTransform:'uppercase',color:'#fca5a5'}}>Actions requises</div>
+              <div style={{fontSize:12,color:T.t3,marginTop:2}}>{todos.length} article{todos.length>1?'s':''} · {emplList.length} emplacement{emplList.length>1?'s':''}</div>
+            </div>
+            <span style={{fontSize:36,fontWeight:900,color:'#fca5a5',letterSpacing:-2}} className="tn">{todos.length}</span>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:14}}>
+            {emplList.slice(0,8).map(([zone, e]) => (
+              <button key={zone} onClick={()=>onArticle(e.articles[0].code, zone)} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:T.card,borderRadius:12,border:`1px solid ${T.border}`,borderLeft:`3px solid ${e.neg>0?'#f87171':e.rupt>0?'#ef4444':e.sousmin>0?'#fbbf24':'#a78bfa'}`,cursor:'pointer',color:T.t1,textAlign:'left'}}>
+                <div style={{minWidth:44,textAlign:'center'}}>
+                  <div style={{fontSize:18,fontWeight:900,color:T.accent}} className="tn">{zone}</div>
+                  <div style={{fontSize:10,color:T.t3}}>{e.total} réf{e.total>1?'s':''}</div>
+                </div>
+                <div style={{flex:1,display:'flex',gap:6,flexWrap:'wrap'}}>
+                  {e.neg > 0 && <span style={{padding:'2px 7px',borderRadius:99,background:'rgba(248,113,113,.15)',color:'#f87171',fontSize:10,fontWeight:800}}>{e.neg} nég</span>}
+                  {e.rupt > 0 && <span style={{padding:'2px 7px',borderRadius:99,background:'rgba(239,68,68,.15)',color:'#fca5a5',fontSize:10,fontWeight:800}}>{e.rupt} rupt</span>}
+                  {e.sousmin > 0 && <span style={{padding:'2px 7px',borderRadius:99,background:'rgba(251,191,36,.12)',color:'#fbbf24',fontSize:10,fontWeight:800}}>{e.sousmin} &lt;min</span>}
+                  {e.surstock > 0 && <span style={{padding:'2px 7px',borderRadius:99,background:'rgba(167,139,250,.12)',color:'#c4b5fd',fontSize:10,fontWeight:800}}>{e.surstock} sur</span>}
+                </div>
+                <Ico d={ICONS.fwd} s={14} sw={2.5} />
+              </button>
+            ))}
+            {emplList.length > 8 && <div style={{fontSize:11,color:T.t3,textAlign:'center',padding:4}}>+ {emplList.length - 8} autres emplacements</div>}
+          </div>
+        </>) : (
+          <div style={{padding:'14px 16px',borderRadius:14,background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.25)',marginBottom:14,display:'flex',gap:10,alignItems:'center'}}>
+            <div style={{width:36,height:36,borderRadius:99,background:'rgba(34,197,94,.18)',color:'#86efac',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><Ico d={ICONS.check} s={20} sw={3} /></div>
+            <div><div style={{fontSize:13,fontWeight:800,color:T.t1}}>Tout est à jour</div><div style={{fontSize:11,color:T.t2,marginTop:2}}>Aucune action en attente · {ARTICLES.length} réfs</div></div>
+          </div>
+        )}
+
+
+        {actionsCount > 0 && (
+          <button onClick={onActions} style={{display:'flex',alignItems:'center',gap:10,padding:'12px 14px',background:'rgba(251,191,36,.08)',borderRadius:12,border:'1px solid rgba(251,191,36,.3)',color:T.t1,marginBottom:14,cursor:'pointer',textAlign:'left'}}>
+            <div style={{fontSize:22,fontWeight:900,color:'#fbbf24'}} className="tn">{actionsCount}</div>
+            <div style={{flex:1,fontSize:12,color:T.t2}}>action{actionsCount>1?'s':''} en attente {validatedCount>0 && <span style={{color:'#86efac'}}>· {validatedCount} validée{validatedCount>1?'s':''}</span>}</div>
+            <Ico d={ICONS.fwd} s={14} sw={2.5} />
           </button>
-          <button onClick={onActions} style={{...statCard(), borderColor:actionsCount>0?'rgba(251,191,36,.3)':T.border}}>
-            <div style={{fontSize:26,fontWeight:900,color:actionsCount>0?'#fbbf24':T.t1,lineHeight:1}} className="tn">{actionsCount}</div>
-            <div style={{fontSize:11,color:T.t2,marginTop:4}}>en attente {validatedCount>0 && <span style={{color:'#86efac'}}>· {validatedCount} validées</span>}</div>
-          </button>
-        </div>
+        )}
 
         <div style={sectionLabel}>Modes</div>
         <div style={{display:'flex',flexDirection:'column',gap:6}}>
@@ -856,57 +936,142 @@ const chipRow = () => ({
 });
 
 // ── ARTICLE ───────────────────────────────────────────────────
-function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, addedActions, invMode, invDoneCount, invTotal, invZone, invCurrentCount, onInvOpen, onInvExit, onInvCount, onActionsCount, onTodo }) {
+function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, onNext, tourZone, addedActions, invMode, invDoneCount, invTotal, invZone, invCurrentCount, onInvOpen, onInvExit, onInvCount, onActionsCount, onTodo }) {
   const [priceShown, setPriceShown] = useState(false);
   const [flip, setFlip] = useState(0);
+  const [showDetails, setShowDetails] = useState(false);
+  const [editQty, setEditQty] = useState(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const a = ARTICLES.find(x=>x.code===code);
   const [invCount, setInvCount] = useState(invCurrentCount != null ? invCurrentCount : (a?.stock ?? 0));
   if (!a) return null;
   const v = VC[a.verdict];
 
+  // ── Écran OK (article sans action requise) — escape hatch via "Détails"
+  if (!invMode && !a.primary && addedActions.length === 0 && !showDetails) {
+    return (
+      <>
+        <div style={{padding:'12px 14px',background:'#22c55e',color:'#06200f',display:'flex',alignItems:'center',gap:10,minHeight:52}}>
+          <button onClick={onBack} style={{width:32,height:32,borderRadius:9,border:'none',background:'rgba(0,0,0,.18)',color:'#06200f',padding:0,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}><Ico d={ICONS.back} /></button>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:10,fontWeight:900,letterSpacing:1.4,textTransform:'uppercase',opacity:.7}}>OK · {a.empl}</div>
+            <div style={{fontSize:13,fontWeight:700}} className="tn">{a.code}</div>
+          </div>
+        </div>
+        <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'24px 24px 12px',textAlign:'center'}}>
+          <div style={{width:96,height:96,borderRadius:99,background:'rgba(34,197,94,.18)',color:'#22c55e',display:'flex',alignItems:'center',justifyContent:'center',marginBottom:16}}>
+            <Ico d={ICONS.check} s={48} sw={3} />
+          </div>
+          <div style={{fontSize:22,fontWeight:900,color:T.t1}}>Tout est OK</div>
+          <div style={{fontSize:13,color:T.t2,marginTop:6,maxWidth:280,lineHeight:1.4}}>{a.lib}</div>
+          <div style={{marginTop:22,padding:'10px 14px',background:T.card,borderRadius:12,border:`1px solid ${T.border}`,display:'grid',gridTemplateColumns:'repeat(4,minmax(48px,1fr))',gap:14}}>
+            {[['Stock', a.stock, '#86efac'],['Min', a.min, T.t1],['Max', a.max, T.t1],['Couv.', a.couv+'j', T.t1]].map(([k,val,c])=>(
+              <div key={k} style={{textAlign:'center'}}>
+                <div style={{fontSize:8,color:T.t3,textTransform:'uppercase',letterSpacing:.6,fontWeight:800}}>{k}</div>
+                <div style={{fontSize:18,fontWeight:900,color:c,marginTop:2,lineHeight:1}} className="tn">{val}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{padding:'10px 14px calc(14px + env(safe-area-inset-bottom))',background:T.bg,borderTop:`1px solid ${T.border}`,display:'flex',gap:8}}>
+          <button onClick={()=>setShowDetails(true)} style={{padding:'14px 18px',borderRadius:12,border:`1px solid ${T.border}`,background:T.card,color:T.t1,fontSize:13,fontWeight:700,cursor:'pointer'}}>Détails</button>
+          <button onClick={onScan} style={{flex:1,padding:'14px',borderRadius:12,border:'none',background:T.accent,color:'#1a0e05',fontSize:14,fontWeight:900,letterSpacing:.3,display:'flex',alignItems:'center',justifyContent:'center',gap:8,cursor:'pointer'}}>
+            <Ico d={ICONS.scan} s={18} sw={2.5} /> Scanner le suivant
+          </button>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
-      <TopBar title={a.code} sub={a.lib} back onBack={onBack} onMenu={()=>{}} />
+      {/* Verdict bandeau pleine largeur — remplace TopBar pour les états actionnables */}
+      {a.primary && !invMode ? (
+        <div style={{padding:'12px 14px',background:v.edge,color:'#0a0c10',display:'flex',alignItems:'center',gap:10,minHeight:52}}>
+          <button onClick={onBack} style={{width:32,height:32,borderRadius:9,border:'none',background:'rgba(0,0,0,.18)',color:'#0a0c10',padding:0,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}><Ico d={ICONS.back} /></button>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:10,fontWeight:900,letterSpacing:1.4,textTransform:'uppercase',opacity:.7}}>{v.label} · {a.empl}</div>
+            <div style={{fontSize:13,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}} className="tn">{a.code} · {a.lib}</div>
+          </div>
+        </div>
+      ) : (
+        <TopBar title={a.code} sub={a.lib} back onBack={onBack} onMenu={()=>{}} />
+      )}
       {invMode && <InvBanner doneCount={invDoneCount} total={invTotal} zone={invZone} onTap={onInvOpen} onExit={onInvExit} />}
       <div style={{flex:1,padding:'12px 14px',overflow:'auto'}}>
-        {/* Hero card */}
-        <div className="pop" style={{background:T.card,borderRadius:18,border:`1px solid ${T.border}`,padding:'14px 16px 12px',position:'relative',overflow:'hidden'}}>
-          <div style={{position:'absolute',top:-40,right:-40,width:160,height:160,borderRadius:99,background:v.edge,opacity:.12,filter:'blur(40px)',pointerEvents:'none'}} />
-          <div style={{display:'flex',alignItems:'center',gap:8,position:'relative'}}>
+
+        {/* HERO recommandation pleine largeur (action-first) */}
+        {!invMode && a.primary && !addedActions.some(x=>x.kind===a.primary.kind) && (
+          <div className="pop" style={{padding:'18px 4px 6px',background:'linear-gradient(180deg,'+v.edge+'22 0%, transparent 80%)',borderRadius:16,marginBottom:10,position:'relative'}}>
+            <div style={{padding:'0 14px'}}>
+              <div style={{fontSize:11,color:T.t3,fontWeight:800,letterSpacing:1,textTransform:'uppercase'}}>Recommandation PRISME</div>
+              <div style={{display:'flex',alignItems:'baseline',gap:10,marginTop:6}}>
+                <div style={{width:46,height:46,borderRadius:13,background:v.bg,color:v.fg,display:'flex',alignItems:'center',justifyContent:'center',alignSelf:'center'}}>
+                  <Ico d={a.primary.kind==='retour'?ICONS.ret||ICONS.back:ICONS.cart||ICONS.fwd} s={24} sw={2} />
+                </div>
+                <span style={{fontSize:80,fontWeight:900,color:v.fg,lineHeight:.85,letterSpacing:-4}} className="tn">{a.primary.qty}</span>
+                <span style={{fontSize:16,color:T.t2,fontWeight:600,marginBottom:6}}>pcs</span>
+              </div>
+              <div style={{fontSize:17,fontWeight:800,color:T.t1,marginTop:8,lineHeight:1.3}}>{a.primary.label} maintenant</div>
+              <div style={{fontSize:12,color:T.t2,marginTop:4,lineHeight:1.5}}>{a.primary.sub}</div>
+            </div>
+            {editQty != null ? (
+              <div style={{padding:'12px 14px 0'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:14,marginBottom:10}}>
+                  <button onClick={()=>setEditQty(Math.max(0,editQty-1))} style={{width:64,height:64,borderRadius:14,border:`1px solid ${T.border}`,background:T.card,color:T.t1,fontSize:28,fontWeight:900,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
+                  <span style={{fontSize:48,fontWeight:900,color:v.fg,minWidth:80,textAlign:'center'}} className="tn">{editQty}</span>
+                  <button onClick={()=>setEditQty(editQty+1)} style={{width:64,height:64,borderRadius:14,border:`1px solid ${T.border}`,background:T.card,color:T.t1,fontSize:28,fontWeight:900,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                  <button onClick={()=>setEditQty(null)} style={{padding:'14px',borderRadius:14,border:`1px solid ${T.border}`,background:T.card,color:T.t1,fontSize:13,fontWeight:700,cursor:'pointer'}}>Annuler</button>
+                  <button onClick={()=>{const p=a.primary;const dest=p.kind==='corriger_stock'?'ERP · stock → 0, MIN/MAX → 0/0':p.kind==='retour'?'Centrale Lille → '+AGENCY:'Centrale Lille (commande auto)';const eta=p.kind==='corriger_stock'?'Immédiat':p.kind==='retour'?'Demain 9h':'48h ouvrées';const lbl=p.kind==='corriger_stock'?p.label+' · stock → 0, MIN/MAX → 0/0':p.label+(editQty?' ('+editQty+' pcs)':'');onAddAction(p.kind,lbl,dest,eta);setEditQty(null);}} style={{padding:'14px',borderRadius:14,border:'none',background:v.edge,color:'#0a0c10',fontSize:14,fontWeight:900,cursor:'pointer'}}>{a.primary.kind==='corriger_stock'?'VALIDER':'VALIDER · '+editQty+' pcs'}</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{padding:'12px 14px 0',display:'grid',gridTemplateColumns:'2fr 1fr',gap:8}}>
+                <button onClick={()=>{const p=a.primary;const dest=p.kind==='corriger_stock'?'ERP · stock → 0, MIN/MAX → 0/0':p.kind==='retour'?'Centrale Lille → '+AGENCY:'Centrale Lille (commande auto)';const eta=p.kind==='corriger_stock'?'Immédiat':p.kind==='retour'?'Demain 9h':'48h ouvrées';const lbl=p.kind==='corriger_stock'?p.label+' · stock → 0, MIN/MAX → 0/0':p.label+(p.qty?' ('+p.qty+' pcs)':'');onAddAction(p.kind,lbl,dest,eta);}} style={{padding:'17px',borderRadius:14,border:'none',background:v.edge,color:'#0a0c10',fontSize:15,fontWeight:900,letterSpacing:.4,cursor:'pointer'}}>{a.primary.kind==='corriger_stock'?'VALIDER':'VALIDER · '+a.primary.qty+' pcs'}</button>
+                <button onClick={()=>setEditQty(a.primary.qty)} style={{padding:'17px',borderRadius:14,border:`1px solid ${T.border}`,background:T.card,color:T.t1,fontSize:13,fontWeight:700,cursor:'pointer'}}>Modifier</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Cartouche article — toujours visible (compact si action-first) */}
+        <div className="pop" style={{background:T.card,borderRadius:16,border:`1px solid ${T.border}`,padding:'12px 14px',position:'relative',overflow:'hidden'}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
             <span style={{fontSize:11,color:T.t2,fontWeight:700,letterSpacing:.6}} className="tn">{a.code}</span>
             <span style={{padding:'2px 8px',borderRadius:99,background:v.bg,color:v.fg,fontSize:10,fontWeight:800,letterSpacing:.5,textTransform:'uppercase'}}>● {v.label}</span>
             <span style={{marginLeft:'auto',fontSize:10,color:T.t3,fontWeight:600}}>{a.sq}</span>
           </div>
-          <div style={{fontSize:15,fontWeight:700,color:T.t1,marginTop:5,lineHeight:1.25,position:'relative'}}>{a.lib}</div>
-          <div style={{fontSize:11,color:T.t3,marginTop:3,position:'relative'}}>{a.marque} · {a.fam}</div>
+          <div style={{fontSize:14,fontWeight:700,color:T.t1,marginTop:5,lineHeight:1.3}}>{a.lib}</div>
+          <div style={{fontSize:11,color:T.t3,marginTop:2}}>{a.marque} · {a.fam}</div>
 
-          {/* Stock hero */}
-          <div style={{marginTop:14,padding:'12px 16px',background:'#0a0c10',borderRadius:14,position:'relative'}}>
-            <div style={{display:'flex',alignItems:'baseline',gap:6}}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:9,color:T.t3,textTransform:'uppercase',letterSpacing:.8,fontWeight:700}}>En stock</div>
-                <div style={{display:'flex',alignItems:'baseline',gap:6,marginTop:2}}>
-                  <span style={{fontSize:52,fontWeight:900,color:v.fg,lineHeight:.9,letterSpacing:-2}} className="tn">{a.stock}</span>
-                  <span style={{fontSize:13,color:T.t2,fontWeight:600}}>pcs</span>
-                </div>
-              </div>
-              <div style={{textAlign:'right'}}>
-                <div style={{fontSize:9,color:T.t3,textTransform:'uppercase',letterSpacing:.8,fontWeight:700}}>Couverture</div>
-                <div style={{fontSize:13,fontWeight:700,color:T.t1,marginTop:4}} className="tn">{a.couv}j</div>
-              </div>
+          {/* KPI row : Stock / Min / Max / Couv. */}
+          <div style={{marginTop:12,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
+            <div style={{padding:'8px 4px',background:'#0a0c10',borderRadius:10,textAlign:'center'}}>
+              <div style={{fontSize:8,color:T.t3,textTransform:'uppercase',letterSpacing:.6,fontWeight:800}}>Stock</div>
+              <div style={{fontSize:20,fontWeight:900,color:v.fg,marginTop:2,lineHeight:1}} className="tn">{a.stock}</div>
+              <div style={{fontSize:9,color:T.t3,marginTop:1}}>actuel</div>
             </div>
-            <div style={{marginTop:10,height:6,background:T.border,borderRadius:99,position:'relative'}}>
-              <div style={{position:'absolute',left:0,top:0,height:'100%',width:`${Math.min(100,(a.stock/Math.max(a.max*1.5,a.stock,1))*100)}%`,background:v.edge,borderRadius:99}} />
-              <div style={{position:'absolute',left:`${(a.min/Math.max(a.max*1.5,a.stock,1))*100}%`,top:-2,width:1.5,height:10,background:T.t2}} />
-              <div style={{position:'absolute',left:`${(a.max/Math.max(a.max*1.5,a.stock,1))*100}%`,top:-2,width:1.5,height:10,background:T.t2}} />
+            <div style={{padding:'8px 4px',background:'#0a0c10',borderRadius:10,textAlign:'center'}}>
+              <div style={{fontSize:8,color:T.t3,textTransform:'uppercase',letterSpacing:.6,fontWeight:800}}>Min</div>
+              <div style={{fontSize:18,fontWeight:900,color:T.t1,marginTop:2,lineHeight:1}} className="tn">{a.min}</div>
+              <div style={{fontSize:9,color:T.t3,marginTop:1}}>seuil</div>
             </div>
-            <div style={{display:'flex',justifyContent:'space-between',marginTop:5,fontSize:9,color:T.t3,fontWeight:600}} className="tn">
-              <span>min {a.min}</span><span>max {a.max}</span>
+            <div style={{padding:'8px 4px',background:'#0a0c10',borderRadius:10,textAlign:'center'}}>
+              <div style={{fontSize:8,color:T.t3,textTransform:'uppercase',letterSpacing:.6,fontWeight:800}}>Max</div>
+              <div style={{fontSize:18,fontWeight:900,color:T.t1,marginTop:2,lineHeight:1}} className="tn">{a.max}</div>
+              <div style={{fontSize:9,color:T.t3,marginTop:1}}>cible</div>
+            </div>
+            <div style={{padding:'8px 4px',background:'#0a0c10',borderRadius:10,textAlign:'center'}}>
+              <div style={{fontSize:8,color:T.t3,textTransform:'uppercase',letterSpacing:.6,fontWeight:800}}>Couv.</div>
+              <div style={{fontSize:18,fontWeight:900,color:T.t1,marginTop:2,lineHeight:1}} className="tn">{a.couv}j</div>
+              <div style={{fontSize:9,color:T.t3,marginTop:1}} className="tn">{a.vitesse||''}</div>
             </div>
           </div>
 
           {/* Empl + prix */}
-          <div style={{marginTop:6,display:'grid',gridTemplateColumns: a.prix != null ? '1.4fr 1fr' : '1fr',gap:6}}>
+          <div style={{marginTop:8,display:'grid',gridTemplateColumns: a.prix != null ? '1.4fr 1fr' : '1fr',gap:6}}>
             <div style={{padding:'10px 14px',background:'#0a0c10',borderRadius:12}}>
               <div style={{fontSize:9,color:T.t3,textTransform:'uppercase',letterSpacing:.8,fontWeight:700}}>Emplacement</div>
               <div style={{fontSize:18,fontWeight:800,color:T.accent,marginTop:2}}>{a.empl}</div>
@@ -918,6 +1083,31 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, addedA
               </button>
             )}
           </div>
+
+          {/* Détails intégrés */}
+          <button onClick={()=>setDetailsOpen(d=>!d)} style={{marginTop:8,width:'100%',padding:'8px 10px',background:'#0a0c10',borderRadius:10,color:T.t3,fontSize:11,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',gap:5,border:'none'}}>
+            <Ico d={detailsOpen ? "<path d='M18 15l-6-6-6 6'/>" : "<path d='M6 9l6 6 6-6'/>"} s={12} sw={2.5} />{detailsOpen ? 'Masquer' : 'Plus de détails'}
+          </button>
+          {detailsOpen && (
+            <div style={{padding:'8px 10px',color:T.t2,fontSize:11,lineHeight:1.8,background:'#0a0c10',borderRadius:'0 0 10px 10px',marginTop:-2}}>
+              <div><span style={{color:T.t3}}>Code-barre</span> <strong style={{color:T.t1}}>{(()=>{ if (!window._eanMap) return '—'; for (const [ean,c] of window._eanMap) { if (c===a.code) return ean; } return '—'; })()}</strong></div>
+              {getCustomEansForCode(a.code).length > 0 && (
+                <div style={{marginTop:2,marginBottom:2}}>
+                  <span style={{color:T.t3}}>Associations</span>
+                  {getCustomEansForCode(a.code).map(ean=>(
+                    <div key={ean} style={{display:'inline-flex',alignItems:'center',gap:4,marginLeft:6,padding:'1px 6px',background:'rgba(251,146,60,.12)',borderRadius:6}}>
+                      <strong style={{color:T.t1,fontFamily:'ui-monospace,monospace',fontSize:11}}>{ean}</strong>
+                      <button onClick={(ev)=>{ ev.stopPropagation(); removeCustomEan(ean); setFlip(f=>f+1); }} style={{background:'none',border:'none',color:'#fca5a5',fontSize:13,fontWeight:800,padding:'0 2px',cursor:'pointer',lineHeight:1}}>x</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div><span style={{color:T.t3}}>Réf. fournisseur</span> <strong style={{color:T.t1}}>{a.refFourn || '—'}</strong></div>
+              <div><span style={{color:T.t3}}>Statut</span> <strong style={{color:T.t1}}>{a.statut}</strong></div>
+              <div><span style={{color:T.t3}}>Squelette</span> <strong style={{color:T.t1}}>{a.sq}</strong></div>
+              <div><span style={{color:T.t3}}>ERP MIN/MAX</span> <strong style={{color:T.t1}}>{(a.erpMin === a.min && a.erpMax === a.max) ? `${a.min}/${a.max}` : `${a.erpMin}/${a.erpMax} (à corriger)`}</strong></div>
+            </div>
+          )}
         </div>
 
         {/* Inv mode quick count */}
@@ -952,24 +1142,9 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, addedA
           </div>
         )}
 
-        {/* Action principale : primary (commander/retour) > ERP > ajouter une action */}
+        {/* Action secondaire / ERP / ajouter (la primary est d\u00e9j\u00e0 dans le hero ci-dessus) */}
         {!invMode && (() => {
-          const hasPrimary = a.primary && !addedActions.some(x=>x.kind===a.primary.kind);
           const erpAction = (a.secondary||[]).find(s=>!addedActions.some(x=>x.kind===s.kind));
-          if (hasPrimary) return (
-            <button onClick={onActions} className="pop" style={{
-              width:'100%',marginTop:12,padding:'14px 16px',borderRadius:16,border:'none',
-              background:v.edge,color:'#0a0c10',textAlign:'left',
-              display:'flex',alignItems:'center',gap:14,
-            }}>
-              <div style={{width:48,height:48,borderRadius:12,background:'rgba(0,0,0,.18)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:22,fontWeight:900}} className="tn">{a.primary.qty}</div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:14,fontWeight:800}}>{a.primary.label}</div>
-                <div style={{fontSize:11,opacity:.75,marginTop:1}}>{a.primary.sub}</div>
-              </div>
-              <Ico d={ICONS.fwd} s={20} sw={2.8} />
-            </button>
-          );
           if (erpAction) return (
             <button onClick={onActions} style={{
               width:'100%',marginTop:12,padding:'12px 14px',borderRadius:14,border:'none',
@@ -1007,30 +1182,6 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, addedA
           </button>
         )}
 
-        {/* Détails */}
-        <details style={{marginTop:10}}>
-          <summary style={{listStyle:'none',padding:'10px 14px',background:T.card,borderRadius:10,color:T.t2,fontSize:12,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',gap:6,border:`1px solid ${T.border}`}}>
-            <Ico d="<path d='M6 9l6 6 6-6'/>" s={14} sw={2.5} />Plus de détails
-          </summary>
-          <div style={{padding:'10px 14px',color:T.t2,fontSize:12,lineHeight:1.8}}>
-            <div><span style={{color:T.t3}}>Code-barre</span> <strong style={{color:T.t1}}>{(()=>{ if (!window._eanMap) return '—'; for (const [ean,c] of window._eanMap) { if (c===a.code) return ean; } return '—'; })()}</strong></div>
-            {getCustomEansForCode(a.code).length > 0 && (
-              <div style={{marginTop:2,marginBottom:2}}>
-                <span style={{color:T.t3}}>Associations</span>
-                {getCustomEansForCode(a.code).map(ean=>(
-                  <div key={ean} style={{display:'inline-flex',alignItems:'center',gap:4,marginLeft:6,padding:'1px 6px',background:'rgba(251,146,60,.12)',borderRadius:6}}>
-                    <strong style={{color:T.t1,fontFamily:'ui-monospace,monospace',fontSize:11}}>{ean}</strong>
-                    <button onClick={()=>{ removeCustomEan(ean); setFlip(f=>f+1); }} style={{background:'none',border:'none',color:'#fca5a5',fontSize:13,fontWeight:800,padding:'0 2px',cursor:'pointer',lineHeight:1}}>x</button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div><span style={{color:T.t3}}>Réf. fournisseur</span> <strong style={{color:T.t1}}>{a.refFourn || '—'}</strong></div>
-            <div><span style={{color:T.t3}}>Statut</span> <strong style={{color:T.t1}}>{a.statut}</strong></div>
-            <div><span style={{color:T.t3}}>Squelette</span> <strong style={{color:T.t1}}>{a.sq}</strong></div>
-            <div><span style={{color:T.t3}}>ERP MIN/MAX</span> <strong style={{color:T.t1}}>{(a.erpMin === a.min && a.erpMax === a.max) ? `${a.min}/${a.max}` : `${a.erpMin}/${a.erpMax} (à corriger)`}</strong></div>
-          </div>
-        </details>
       </div>
 
       <BottomBar onSearch={onBack} onScan={onScan} onActions={onTodo} count={onActionsCount} primary={a.primary && !invMode} />
@@ -1065,8 +1216,8 @@ function ActionsSheet({ code, existing, onClose, onAdd }) {
   const doneKinds = new Set((existing||[]).filter(x=>x.status==='pending'||x.status==='validee').map(x=>x.kind));
   const all = [];
   if (a.primary && !doneKinds.has(a.primary.kind)) {
-    const pdest = a.primary.kind==='retour' ? 'Centrale Lille → AG93' : 'Centrale Lille (commande auto)';
-    const peta = a.primary.kind==='retour' ? 'Demain 9h' : '48h ouvrées';
+    const pdest = a.primary.kind==='corriger_stock' ? 'ERP · stock → 0, MIN/MAX → 0/0' : a.primary.kind==='retour' ? 'Centrale Lille → '+AGENCY : 'Centrale Lille (commande auto)';
+    const peta = a.primary.kind==='corriger_stock' ? 'Immédiat' : a.primary.kind==='retour' ? 'Demain 9h' : '48h ouvrées';
     all.push({...a.primary, primary:true, color:v.edge, dest:pdest, eta:peta});
   }
   (a.secondary || []).filter(s=>!doneKinds.has(s.kind)).forEach(s => all.push({...s, dest:'ERP central · sync', eta:'≤ 5 min'}));
@@ -1078,7 +1229,7 @@ function ActionsSheet({ code, existing, onClose, onAdd }) {
       <div style={{padding:'4px 14px 0'}}>
         <div style={{fontSize:11,color:T.t3,padding:'0 4px 8px'}} className="tn">Article {a.code} · {a.lib}</div>
         {all.map((x,i)=>(
-          <button key={i} onClick={()=>onAdd(x.kind, x.label + (x.qty?` (${x.qty} pcs)`:''), x.dest, x.eta)} style={{
+          <button key={i} onClick={()=>onAdd(x.kind, x.label + (x.sub&&x.kind==='erp'?' · '+x.sub:'') + (x.qty?` (${x.qty} pcs)`:''), x.dest, x.eta)} style={{
             width:'100%',display:'flex',alignItems:'center',gap:12,padding:'13px 14px',
             background: x.primary ? x.color : 'rgba(255,255,255,.03)',
             color: x.primary ? '#0a0c10' : T.t1,
@@ -1855,7 +2006,7 @@ function StockEditSheet({ code, onClose, onConfirm }) {
 }
 
 // ── ConfirmSheet (post-action enrichi) ────────────────────────
-function ConfirmSheet({ info, onClose, onUndo, onHome }) {
+function ConfirmSheet({ info, onClose, onUndo, onHome, onNext, tourZone }) {
   const [count, setCount] = useState(10);
   const [undone, setUndone] = useState(false);
   useEffect(() => {
@@ -1885,14 +2036,21 @@ function ConfirmSheet({ info, onClose, onUndo, onHome }) {
             <span style={{fontSize:11,opacity:.75}} className="tn">{count}s</span>
           </button>
         )}
+        {onNext ? (
+          <button onClick={onNext} style={{
+            width:'100%',padding:'14px',borderRadius:12,border:'none',
+            background:T.accent,color:'#1a0e05',fontSize:14,fontWeight:900,letterSpacing:.3,
+          }}>Suivant · zone {tourZone} →</button>
+        ) : (
+          <button onClick={onHome} style={{
+            width:'100%',padding:'14px',borderRadius:12,border:'none',
+            background:'#fff',color:'#000',fontSize:14,fontWeight:800,letterSpacing:.3,
+          }}>{count > 0 ? 'OK · retour à l\u2019accueil' : 'Retour à l\u2019accueil'}</button>
+        )}
         <button onClick={onHome} style={{
-          width:'100%',padding:'14px',borderRadius:12,border:'none',
-          background:'#fff',color:'#000',fontSize:14,fontWeight:800,letterSpacing:.3,
-        }}>{count > 0 ? 'OK · retour à l\u2019accueil' : 'Retour à l\u2019accueil'}</button>
-        <button onClick={onClose} style={{
           width:'100%',marginTop:6,padding:'12px',borderRadius:12,border:'none',
           background:'transparent',color:T.t2,fontSize:12,fontWeight:600,
-        }}>Rester sur la fiche</button>
+        }}>{onNext ? 'Retour à l\u2019accueil' : 'Rester sur la fiche'}</button>
       </div>
     </Sheet>
   );
