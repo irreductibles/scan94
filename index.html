@@ -453,7 +453,7 @@ function App() {
 
       {page === 'invList' && <InvListScreen
         zone={INV_ZONE}
-        codes={INV_CODES}
+        codes={[...INV_CODES, ...Object.keys(invExtras).filter(c => !INV_CODES.includes(c))]}
         counts={invCounts}
         onPick={openArticle}
         onExit={exitInv}
