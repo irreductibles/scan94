@@ -1461,11 +1461,11 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
                   )}
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:'flex',alignItems:'center',gap:6}}>
-                      <span style={{fontSize:11,color:T.t3,fontWeight:600}} className="tn">{d.code}</span>
-                      {d.barHint && <span style={{fontSize:10,color:T.t3,opacity:.6}} className="tn">{d.barHint}</span>}
+                      <span style={{fontSize:15,color:T.t1,fontWeight:900,fontFamily:'ui-monospace,monospace'}} className="tn">{d.code}</span>
+                      {d.barHint && <span style={{fontSize:10,color:T.accent,fontWeight:700}} className="tn">{d.barHint}</span>}
                       <span style={{padding:'1px 6px',borderRadius:99,background:v.bg,color:v.fg,fontSize:9,fontWeight:800,letterSpacing:.3,textTransform:'uppercase'}}>{v.label}</span>
                     </div>
-                    <div style={{fontSize:13,fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:1}}>{d.lib}</div>
+                    <div style={{fontSize:12,fontWeight:500,color:T.t3,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',marginTop:1}}>{d.lib}</div>
                     <div style={{fontSize:11,color:T.accent,fontWeight:600,marginTop:1}}>{d.empl}</div>
                   </div>
                   <div style={{textAlign:'right'}}>
