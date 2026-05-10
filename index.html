@@ -414,7 +414,7 @@ function App() {
     // Appliquer l'effet visuel immédiat
     if (a) {
       if (kind === 'stock') { const m = label.match(/→\s*(\d+)/); if (m) a.stock = parseInt(m[1]); }
-      if (kind === 'corriger_stock') { a.stock = 0; }
+      if (kind === 'corriger_stock') { const m = label.match(/stock\s*→\s*(\d+)/); a.stock = m ? parseInt(m[1]) : 0; }
       if (kind === 'erp') { a.min = a._raw?.nouveauMin ?? a.min; a.max = a._raw?.nouveauMax ?? a.max; }
       _refreshArticle(a);
     }
@@ -1076,7 +1076,7 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, onNext
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
                   <button onClick={()=>setEditQty(null)} style={{padding:'14px',borderRadius:14,border:`1px solid ${T.border}`,background:T.card,color:T.t1,fontSize:13,fontWeight:700,cursor:'pointer'}}>Annuler</button>
-                  <button onClick={()=>{const p=a.primary;const dest=p.kind==='corriger_stock'?'ERP · stock → 0, MIN/MAX → 0/0':p.kind==='retour'?'Centrale Lille → '+AGENCY:'Centrale Lille (commande auto)';const eta=p.kind==='corriger_stock'?'Immédiat':p.kind==='retour'?'Demain 9h':'48h ouvrées';const lbl=p.kind==='corriger_stock'?p.label+' · stock → 0, MIN/MAX → 0/0':p.label+(editQty?' ('+editQty+' pcs)':'');onAddAction(p.kind,lbl,dest,eta);setEditQty(null);}} style={{padding:'14px',borderRadius:14,border:'none',background:v.edge,color:'#0a0c10',fontSize:14,fontWeight:900,cursor:'pointer'}}>{a.primary.kind==='corriger_stock'?'VALIDER':'VALIDER · '+editQty+' pcs'}</button>
+                  <button onClick={()=>{const p=a.primary;const dest=p.kind==='corriger_stock'?'ERP · stock → '+editQty:p.kind==='retour'?'Centrale Lille → '+AGENCY:'Centrale Lille (commande auto)';const eta=p.kind==='corriger_stock'?'Immédiat':p.kind==='retour'?'Demain 9h':'48h ouvrées';const lbl=p.kind==='corriger_stock'?p.label+' · stock → '+editQty:p.label+(editQty?' ('+editQty+' pcs)':'');onAddAction(p.kind,lbl,dest,eta);setEditQty(null);}} style={{padding:'14px',borderRadius:14,border:'none',background:v.edge,color:'#0a0c10',fontSize:14,fontWeight:900,cursor:'pointer'}}>{a.primary.kind==='corriger_stock'?'VALIDER · stock → '+editQty:'VALIDER · '+editQty+' pcs'}</button>
                 </div>
               </div>
             ) : (
