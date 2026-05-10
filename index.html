@@ -2041,22 +2041,25 @@ function InvSummaryScreen({ zone, codes, counts, extras={}, onBack, onPush, onPi
 
         {extrasList.length > 0 && (
           <>
-            <div style={{...sectionLabel, color:'#fbbf24', display:'flex', alignItems:'center', gap:8}}>
-              <span style={{flex:1}}>📍 Hors emplacement — ERP dit ailleurs ({extrasList.length})</span>
-              <button onClick={onValidExtras} style={{padding:'4px 10px',borderRadius:6,border:'none',background:'#22c55e',color:'#06200f',fontSize:10,fontWeight:800,cursor:'pointer'}}>Tous vérifiés ✓</button>
+            <div style={{...sectionLabel, color:'#fb923c', display:'flex', alignItems:'center', gap:8}}>
+              <span style={{flex:1}}>Changer emplacement ({extrasList.length})</span>
+              <button onClick={onValidExtras} style={{padding:'4px 10px',borderRadius:6,border:'none',background:'#22c55e',color:'#06200f',fontSize:10,fontWeight:800,cursor:'pointer'}}>Tous corrigés ✓</button>
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:4,marginBottom:14}}>
               {extrasList.map(({a, n}) => (
                 <button key={a.code} onClick={()=>onPick(a.code)} style={{
                   display:'flex',alignItems:'center',gap:10,padding:'10px 12px',
-                  background:'rgba(251,191,36,.06)',borderRadius:10,
-                  border:'1px solid rgba(251,191,36,.3)',color:T.t1,textAlign:'left',width:'100%',
+                  background:'rgba(251,146,60,.06)',borderRadius:10,
+                  border:'1px solid rgba(251,146,60,.3)',color:T.t1,textAlign:'left',width:'100%',
                 }}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:13,fontWeight:800,letterSpacing:.5}} className="tn">{a.code}</div>
                     <div style={{fontSize:11,color:T.t3,marginTop:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a.lib}</div>
                   </div>
-                  <div style={{textAlign:'right',flexShrink:0,fontSize:11,color:'#fbbf24'}}>ERP : {a.empl||'—'}</div>
+                  <div style={{textAlign:'right',flexShrink:0}}>
+                    <div style={{fontSize:10,color:T.t3}}>ERP : {a.empl||'—'}</div>
+                    <div style={{fontSize:11,color:'#fb923c',fontWeight:700,marginTop:1}}>→ {zone}</div>
+                  </div>
                 </button>
               ))}
             </div>
