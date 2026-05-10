@@ -2499,7 +2499,7 @@ function CopyBtn({ code, large }) {
   );
 }
 
-function PCEmpty({ agency, pendingActions, historyCount }) {
+function PCEmpty({ agency, historyCount }) {
   return (
     <div style={{maxWidth:720,margin:'8vh auto 0',textAlign:'center',color:T.t1}}>
       <div style={{fontSize:9,fontWeight:800,letterSpacing:1.5,color:T.t3,textTransform:'uppercase'}}>Agence {agency}</div>
@@ -2507,16 +2507,11 @@ function PCEmpty({ agency, pendingActions, historyCount }) {
       <div style={{fontSize:14,color:T.t2,marginTop:10,maxWidth:440,margin:'10px auto 0',lineHeight:1.5}}>
         Pointe la douchette USB sur un code, ou tape un code article, EAN, libelle ou emplacement dans le champ a gauche.
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginTop:36,textAlign:'left'}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:14,marginTop:36,textAlign:'left',maxWidth:500,margin:'36px auto 0'}}>
         <div style={pcStat}>
           <div style={pcStatLbl}>Refs en cache</div>
           <div style={pcStatVal} className="tn">{ARTICLES.length}</div>
           <div style={pcStatSub}>{DATA_SOURCE === 'idb' ? 'session PRISME live' : 'donnees demo'}</div>
-        </div>
-        <div style={pcStat}>
-          <div style={pcStatLbl}>Actions en attente</div>
-          <div style={{...pcStatVal,color:pendingActions?T.accent:T.t1}} className="tn">{pendingActions}</div>
-          <div style={pcStatSub}>sync ERP central</div>
         </div>
         <div style={pcStat}>
           <div style={pcStatLbl}>Scans aujourd'hui</div>
@@ -2533,13 +2528,11 @@ function PCEmpty({ agency, pendingActions, historyCount }) {
   );
 }
 
-function PCArticle({ a, actions, onAddAction, onClose }) {
+function PCArticle({ a, onClose }) {
   const v = VC[a.verdict];
   const [priceShown, setPriceShown] = useState(false);
-  const showPrisme = SCAN_CONFIG.retour !== false;
-  const erpDiff = showPrisme && (a.erpMin !== a.min || a.erpMax !== a.max);
   return (
-    <div style={{maxWidth:1100,margin:'0 auto'}}>
+    <div style={{maxWidth:800,margin:'0 auto'}}>
       <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:18}}>
         <div style={{padding:'4px 10px',borderRadius:99,background:v.bg,color:v.fg,fontSize:11,fontWeight:800,letterSpacing:.5,textTransform:'uppercase'}}>● {v.label}</div>
         <div style={{fontSize:13,color:T.t3,fontWeight:600,letterSpacing:.5}} className="tn">{a.code}</div>
@@ -2555,88 +2548,36 @@ function PCArticle({ a, actions, onAddAction, onClose }) {
       <div style={{fontSize:26,fontWeight:800,color:T.t1,letterSpacing:-.3,lineHeight:1.15}}>{a.lib}</div>
       <div style={{fontSize:13,color:T.t2,marginTop:6}}>{a.marque} · {a.fam} {a.refFourn ? <span style={{color:T.t3,marginLeft:8}}>ref. four. {a.refFourn}</span>:''}</div>
 
-      <div style={{display:'grid',gridTemplateColumns:'1.2fr 1fr',gap:20,marginTop:24,alignItems:'start'}}>
-        <div style={{padding:'24px 26px',background:T.card,borderRadius:16,border:`1px solid ${T.border}`,position:'relative',overflow:'hidden'}}>
-          <div style={{position:'absolute',top:-60,right:-60,width:200,height:200,borderRadius:99,background:v.edge,opacity:.1,filter:'blur(50px)',pointerEvents:'none'}} />
-          <div style={pcStatLbl}>En stock</div>
-          <div style={{display:'flex',alignItems:'baseline',gap:10,marginTop:6,position:'relative'}}>
-            <span style={{fontSize:96,fontWeight:900,color:v.fg,lineHeight:.9,letterSpacing:-4}} className="tn">{a.stock}</span>
-            <span style={{fontSize:16,color:T.t2,fontWeight:600}}>pcs</span>
-            <span style={{marginLeft:'auto',fontSize:13,color:T.t2,fontWeight:600}} className="tn">{a.couv}j de couverture</span>
-          </div>
-          <div style={{marginTop:18,height:8,background:'#0a0c10',borderRadius:99,position:'relative'}}>
-            <div style={{position:'absolute',left:0,top:0,height:'100%',width:`${Math.min(100,(a.stock/Math.max(a.max*1.5,a.stock,1))*100)}%`,background:v.edge,borderRadius:99}} />
-            <div style={{position:'absolute',left:`${(a.min/Math.max(a.max*1.5,a.stock,1))*100}%`,top:-3,width:2,height:14,background:T.t2}} />
-            <div style={{position:'absolute',left:`${(a.max/Math.max(a.max*1.5,a.stock,1))*100}%`,top:-3,width:2,height:14,background:T.t2}} />
-          </div>
-          <div style={{display:'flex',justifyContent:'space-between',marginTop:8,fontSize:11,color:T.t3,fontWeight:600}} className="tn">
-            <span>min {a.min}</span><span>max {a.max}</span>
-          </div>
-
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginTop:18}}>
-            <div style={pcCellSmall}>
-              <div style={pcStatLbl}>Empl.</div>
-              <div style={{fontSize:18,fontWeight:800,color:T.accent,marginTop:3}}>{a.empl}</div>
-            </div>
-            <button onClick={()=>setPriceShown(p=>!p)} style={{...pcCellSmall,border:'none',cursor:'pointer',textAlign:'left'}}>
-              <div style={pcStatLbl}>Prix moy. <span style={{color:T.t3,fontWeight:500}}>· {a.marge}%</span></div>
-              <div style={{fontSize:16,fontWeight:800,color:T.t1,marginTop:3,filter:priceShown?'none':'blur(5px)',transition:'filter .15s'}} className="tn">{a.prix?a.prix.toFixed(2):'--'} EUR</div>
-            </button>
-            <div style={pcCellSmall}>
-              <div style={pcStatLbl}>Statut</div>
-              <div style={{fontSize:13,fontWeight:700,color:T.t1,marginTop:5}}>{a.statut}</div>
-            </div>
-          </div>
-
-          {erpDiff && (
-            <div style={{marginTop:14,padding:'10px 12px',background:'rgba(245,158,11,.08)',borderRadius:10,border:'1px solid rgba(245,158,11,.25)',fontSize:12,color:'#fbbf24'}}>
-              ERP actuel <strong>{a.erpMin}/{a.erpMax}</strong> != PRISME <strong>{a.min}/{a.max}</strong>
-            </div>
-          )}
+      <div style={{padding:'24px 26px',background:T.card,borderRadius:16,border:`1px solid ${T.border}`,position:'relative',overflow:'hidden',marginTop:24}}>
+        <div style={{position:'absolute',top:-60,right:-60,width:200,height:200,borderRadius:99,background:v.edge,opacity:.1,filter:'blur(50px)',pointerEvents:'none'}} />
+        <div style={pcStatLbl}>En stock</div>
+        <div style={{display:'flex',alignItems:'baseline',gap:10,marginTop:6,position:'relative'}}>
+          <span style={{fontSize:96,fontWeight:900,color:v.fg,lineHeight:.9,letterSpacing:-4}} className="tn">{a.stock}</span>
+          <span style={{fontSize:16,color:T.t2,fontWeight:600}}>pcs</span>
+          <span style={{marginLeft:'auto',fontSize:13,color:T.t2,fontWeight:600}} className="tn">{a.couv}j de couverture</span>
+        </div>
+        <div style={{marginTop:18,height:8,background:'#0a0c10',borderRadius:99,position:'relative'}}>
+          <div style={{position:'absolute',left:0,top:0,height:'100%',width:`${Math.min(100,(a.stock/Math.max(a.max*1.5,a.stock,1))*100)}%`,background:v.edge,borderRadius:99}} />
+          <div style={{position:'absolute',left:`${(a.min/Math.max(a.max*1.5,a.stock,1))*100}%`,top:-3,width:2,height:14,background:T.t2}} />
+          <div style={{position:'absolute',left:`${(a.max/Math.max(a.max*1.5,a.stock,1))*100}%`,top:-3,width:2,height:14,background:T.t2}} />
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between',marginTop:8,fontSize:11,color:T.t3,fontWeight:600}} className="tn">
+          <span>min {a.min}</span><span>max {a.max}</span>
         </div>
 
-        <div style={{padding:'20px 22px',background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
-          <div style={pcStatLbl}>Actions</div>
-          <div style={{marginTop:14,display:'flex',flexDirection:'column',gap:8}}>
-            {a.primary && (
-              <button onClick={()=>onAddAction(a.primary.kind, a.primary.label, 'ERP central · sync', '< 5 min')} style={{
-                padding:'14px 16px',borderRadius:12,border:'none',background:v.edge,color:'#fff',
-                textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:12,
-              }}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:14,fontWeight:800}}>{a.primary.label}{a.primary.qty?` · ${a.primary.qty} pcs`:''}</div>
-                  <div style={{fontSize:11,fontWeight:500,opacity:.85,marginTop:2}}>{a.primary.sub}</div>
-                </div>
-                <div style={{fontSize:18,opacity:.7}}>-></div>
-              </button>
-            )}
-            {(a.secondary||[]).map((s,i) => (
-              <button key={i} onClick={()=>onAddAction(s.kind, s.label, 'ERP central', '< 5 min')} style={pcActionBtn}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:700,color:T.t1}}>{s.label}</div>
-                  <div style={{fontSize:11,color:T.t3,marginTop:2}}>{s.sub}</div>
-                </div>
-                <div style={{fontSize:14,color:T.t3}}>-></div>
-              </button>
-            ))}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginTop:18}}>
+          <div style={pcCellSmall}>
+            <div style={pcStatLbl}>Empl.</div>
+            <div style={{fontSize:18,fontWeight:800,color:T.accent,marginTop:3}}>{a.empl}</div>
           </div>
-
-          {actions.length > 0 && (
-            <>
-              <div style={{...pcStatLbl,marginTop:22}}>Deja ajoutees · {actions.length}</div>
-              <div style={{marginTop:10,display:'flex',flexDirection:'column',gap:6}}>
-                {actions.map(act => (
-                  <div key={act.id} style={{padding:'9px 12px',borderRadius:9,background:'#0a0c10',border:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:10,fontSize:12}}>
-                    <div style={{width:6,height:6,borderRadius:99,background:act.status==='pending'?'#fbbf24':act.status==='validee'?'#22c55e':'#ef4444',flexShrink:0}} />
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:700,color:T.t1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{act.label}</div>
-                      <div style={{fontSize:10,color:T.t3,marginTop:1}}>{act.status==='pending'?'en cours':act.status==='validee'?'validee':'refusee'}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+          <button onClick={()=>setPriceShown(p=>!p)} style={{...pcCellSmall,border:'none',cursor:'pointer',textAlign:'left'}}>
+            <div style={pcStatLbl}>Prix moy. <span style={{color:T.t3,fontWeight:500}}>· {a.marge}%</span></div>
+            <div style={{fontSize:16,fontWeight:800,color:T.t1,marginTop:3,filter:priceShown?'none':'blur(5px)',transition:'filter .15s'}} className="tn">{a.prix?a.prix.toFixed(2):'--'} EUR</div>
+          </button>
+          <div style={pcCellSmall}>
+            <div style={pcStatLbl}>Statut</div>
+            <div style={{fontSize:13,fontWeight:700,color:T.t1,marginTop:5}}>{a.statut}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -2657,10 +2598,6 @@ function PCApp() {
   });
   useEffect(()=>{ try{ localStorage.setItem('prisme_pc_hist', JSON.stringify(history.slice(0,50))); }catch(e){} }, [history]);
   const [historyOpen, setHistoryOpen] = useState(true);
-  const [actions, setActions] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('prisme_actions')||'{}'); } catch(e) { return {}; }
-  });
-  useEffect(() => { try { localStorage.setItem('prisme_actions', JSON.stringify(actions)); } catch(e){} }, [actions]);
   const [unknown, setUnknown] = useState(null);
   const [flashKey, setFlashKey] = useState(0);
   const [scannerActive, setScannerActive] = useState(false);
@@ -2739,26 +2676,6 @@ function PCApp() {
   }, [q]);
 
   const article = code ? ARTICLES.find(x=>x.code===code) : null;
-  const pendingActions = Object.values(actions).reduce((n,a)=>n+a.filter(x=>x.status==='pending').length,0);
-
-  const _pcRefresh = (a) => {
-    a.verdict = _verdict(a.stock, a.min, a.max);
-    a.primary = _primary(a.verdict, a.stock, a.min, a.max, a.statut);
-    a.secondary = _secondary(a._raw || {});
-  };
-  const pcAddAction = (artCode, kind, label, dest, eta) => {
-    const id = 'a' + Math.random().toString(36).slice(2,8);
-    const a = ARTICLES.find(x=>x.code===artCode);
-    const prev = a ? {stock:a.stock, min:a.min, max:a.max} : null;
-    if (a) {
-      if (kind === 'corriger_stock') { a.stock = 0; }
-      if (kind === 'erp') { a.min = a._raw?.nouveauMin ?? a.min; a.max = a._raw?.nouveauMax ?? a.max; }
-      _pcRefresh(a);
-    }
-    const entry = { id, kind, label, dest, eta, ts:Date.now(), status:'pending', _prev:prev };
-    setActions(ac => ({...ac, [artCode]: [...(ac[artCode]||[]), entry]}));
-    bump(v=>v+1);
-  };
 
   return (
     <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',background:T.bg,color:T.t1,fontSize:14}}>
@@ -2883,7 +2800,7 @@ function PCApp() {
               <div style={{fontSize:13}}>Connexion a la base articles</div>
             </div>
           )}
-          {!article && !unknown && DATA_SOURCE !== 'loading' && <PCEmpty agency={CTX.agency} pendingActions={pendingActions} historyCount={history.length} />}
+          {!article && !unknown && DATA_SOURCE !== 'loading' && <PCEmpty agency={CTX.agency} historyCount={history.length} />}
           {unknown && (
             <div style={{maxWidth:560,margin:'80px auto',padding:'28px',background:T.card,borderRadius:16,border:`1px solid ${T.border}`,textAlign:'center'}}>
               <div style={{fontSize:18,fontWeight:800,color:T.t1}}>Code <span style={{color:T.accent,letterSpacing:1}} className="tn">"{unknown}"</span> non trouve</div>
@@ -2894,7 +2811,7 @@ function PCApp() {
               </div>
             </div>
           )}
-          {article && <PCArticle a={article} actions={actions[article.code]||[]} onAddAction={(k,l,d,e)=>pcAddAction(article.code,k,l,d,e)} onClose={()=>setCode(null)} />}
+          {article && <PCArticle a={article} onClose={()=>setCode(null)} />}
         </div>
 
         {/* Right: history panel (collapsible) */}
