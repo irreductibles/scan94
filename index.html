@@ -258,6 +258,7 @@ function hydrateFromIDB() {
       if (hasLive) {
         ARTICLES = loadEngineData(current.finalData);
         DATA_SOURCE = 'idb';
+        if (current.selectedMyStore) { CTX.agency = current.selectedMyStore; CTX.greeting = CTX.agency; }
         console.log('[Prisme] IDB session live · ' + ARTICLES.length + ' articles');
         window.dispatchEvent(new CustomEvent('prisme-data', { detail:{ count: ARTICLES.length, source:'idb' } }));
         return;
