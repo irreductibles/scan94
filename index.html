@@ -128,7 +128,8 @@ const SQ_LABEL = { socle:'Socle', surveiller:'Surveiller', a_implanter:'À impla
 
 // Verdict stock — proxy léger de _verdict() côté scan.js (sans W/vitesse pour l'instant).
 function _verdict(stock, min, max) {
-  if (stock <= 0) return 'rupture';
+  if (stock < 0) return 'rupture';
+  if (stock === 0 && min > 0) return 'rupture';
   if (min > 0 && stock < min) return 'sousmin';
   if (max > 0 && stock > max) return 'surstock';
   return 'ok';
