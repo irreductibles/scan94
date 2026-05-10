@@ -460,7 +460,7 @@ function App() {
     showToast(`✓ ${ecarts.length} correction${ecarts.length>1?'s':''} envoyée${ecarts.length>1?'s':''} à l'ERP`);
   };
   const totalActions = Object.values(actions).reduce((n,a)=>n+a.length,0);
-  const pendingActions = Object.values(actions).reduce((n,a)=>n+a.filter(x=>x.status==='pending').length,0);
+  const pendingActions = Object.values(actions).reduce((n,a)=>n+a.filter(x=>x.status==='pending'&&x.kind!=='etiquette').length,0);
   const invDoneCount = INV_CODES.filter(c => invCounts[c] != null).length;
 
   return (
@@ -1947,8 +1947,8 @@ function JournalSheet({ onClose, actions, onPick, onUndo, onValidate, onPush, on
     const eb = ARTICLES.find(x=>x.code===b.code)?.empl || 'ZZZ';
     return ea.localeCompare(eb);
   });
-  const pending = all.filter(x=>x.status==='pending');
-  const validated = all.filter(x=>x.status==='validee');
+  const pending = all.filter(x=>x.status==='pending' && x.kind!=='etiquette');
+  const validated = all.filter(x=>x.status==='validee' && x.kind!=='etiquette');
   const etiquettes = all.filter(x=>x.kind==='etiquette' && x.status!=='refusee');
 
   const Row = ({ x }) => {
