@@ -1061,7 +1061,7 @@ function ActionsSheet({ code, existing, onClose, onAdd }) {
     all.push({...a.primary, primary:true, color:v.edge, dest:pdest, eta:peta});
   }
   (a.secondary || []).filter(s=>!doneKinds.has(s.kind)).forEach(s => all.push({...s, dest:'ERP central · sync', eta:'≤ 5 min'}));
-  all.push({kind:'stock', label:'Modifier le stock', sub:'Saisir compté physique', dest:'ERP central · sync', eta:'≤ 5 min'});
+  all.push({kind:'stock', label:'Modifier le stock', sub:`Stock ERP : ${a.stock} pcs`, dest:'ERP central · sync', eta:'≤ 5 min'});
   all.push({kind:'emp', label:'Modifier emplacement', sub:`Actuel : ${a.empl}`, dest:'ERP central', eta:'Immédiat'});
 
   return (
