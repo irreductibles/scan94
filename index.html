@@ -463,7 +463,7 @@ function App() {
 
       {page === 'invSummary' && <InvSummaryScreen
         zone={INV_ZONE}
-        codes={INV_CODES}
+        codes={[...INV_CODES, ...Object.keys(invExtras).filter(c => !INV_CODES.includes(c))]}
         counts={invCounts}
         extras={invExtras}
         onBack={()=>setPage('invList')}
@@ -478,8 +478,7 @@ function App() {
             codes.forEach(c => { const a = ARTICLES.find(x=>x.code===c); if (a) next[c] = invExtras[c] ?? a.stock; });
             return next;
           });
-          showToast(`✓ ${codes.length} article${codes.length>1?'s':''} vérifié${codes.length>1?'s':''}`);
-          setInvExtras({});
+          showToast(`✓ ${codes.length} article${codes.length>1?'s':''} · emplacement corrigé`);
         }}
       />}
 
