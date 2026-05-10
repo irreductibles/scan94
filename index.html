@@ -1053,15 +1053,16 @@ function Sheet({ children, onClose, title, h='auto' }) {
 function ActionsSheet({ code, existing, onClose, onAdd }) {
   const a = ARTICLES.find(x=>x.code===code);
   const v = VC[a.verdict];
+  const doneKinds = new Set((existing||[]).filter(x=>x.status==='pending'||x.status==='validee').map(x=>x.kind));
   const all = [];
-  if (a.primary) {
+  if (a.primary && !doneKinds.has(a.primary.kind)) {
     const pdest = a.primary.kind==='retour' ? 'Centrale Lille → AG93' : 'Centrale Lille (commande auto)';
     const peta = a.primary.kind==='retour' ? 'Demain 9h' : '48h ouvrées';
     all.push({...a.primary, primary:true, color:v.edge, dest:pdest, eta:peta});
   }
-  (a.secondary || []).forEach(s => all.push({...s, dest:'ERP central · sync', eta:'≤ 5 min'}));
-  all.push({kind:'stock', label:'Modifier le stock', sub:'Saisir compté physique', dest:'ERP central · sync', eta:'≤ 5 min'});
-  all.push({kind:'emp', label:'Modifier emplacement', sub:`Actuel : ${a.empl}`, dest:'ERP central', eta:'Immédiat'});
+  (a.secondary || []).filter(s=>!doneKinds.has(s.kind)).forEach(s => all.push({...s, dest:'ERP central · sync', eta:'≤ 5 min'}));
+  if (!doneKinds.has('stock')) all.push({kind:'stock', label:'Modifier le stock', sub:'Saisir compté physique', dest:'ERP central · sync', eta:'≤ 5 min'});
+  if (!doneKinds.has('emp')) all.push({kind:'emp', label:'Modifier emplacement', sub:`Actuel : ${a.empl}`, dest:'ERP central', eta:'Immédiat'});
 
   return (
     <Sheet onClose={onClose} title="Que veux-tu faire ?">
