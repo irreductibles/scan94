@@ -2570,10 +2570,17 @@ function PCArticle({ a, onClose }) {
             <div style={pcStatLbl}>Empl.</div>
             <div style={{fontSize:18,fontWeight:800,color:T.accent,marginTop:3}}>{a.empl}</div>
           </div>
-          <button onClick={()=>setPriceShown(p=>!p)} style={{...pcCellSmall,border:'none',cursor:'pointer',textAlign:'left'}}>
-            <div style={pcStatLbl}>Prix moy. <span style={{color:T.t3,fontWeight:500}}>· {a.marge}%</span></div>
-            <div style={{fontSize:16,fontWeight:800,color:T.t1,marginTop:3,filter:priceShown?'none':'blur(5px)',transition:'filter .15s'}} className="tn">{a.prix?a.prix.toFixed(2):'--'} EUR</div>
-          </button>
+          {SCAN_CONFIG.prix !== false ? (
+            <button onClick={()=>setPriceShown(p=>!p)} style={{...pcCellSmall,border:'none',cursor:'pointer',textAlign:'left'}}>
+              <div style={pcStatLbl}>Prix moy. <span style={{color:T.t3,fontWeight:500}}>· {a.marge}%</span></div>
+              <div style={{fontSize:16,fontWeight:800,color:T.t1,marginTop:3,filter:priceShown?'none':'blur(5px)',transition:'filter .15s'}} className="tn">{a.prix?a.prix.toFixed(2):'--'} EUR</div>
+            </button>
+          ) : (
+            <div style={pcCellSmall}>
+              <div style={pcStatLbl}>Couverture</div>
+              <div style={{fontSize:16,fontWeight:800,color:T.t1,marginTop:3}} className="tn">{a.couv}j</div>
+            </div>
+          )}
           <div style={pcCellSmall}>
             <div style={pcStatLbl}>Statut</div>
             <div style={{fontSize:13,fontWeight:700,color:T.t1,marginTop:5}}>{a.statut}</div>
