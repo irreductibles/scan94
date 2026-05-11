@@ -1757,22 +1757,28 @@ function DouchetteScreen({ onBack, onArticle }) {
     setBuf(v);
     lastKeyRef.current = Date.now();
   };
+  const resolveAndShow = (raw) => {
+    const clean = raw.replace(/\D/g,'');
+    // 1) Code article direct (6 chiffres)
+    let a = ARTICLES.find(x => x.code === clean);
+    // 2) Ref fournisseur
+    if (!a) a = ARTICLES.find(x => x.refFourn && (x.refFourn === raw || x.refFourn === raw.toUpperCase()));
+    // 3) Custom EAN
+    if (!a && _customEanMap.has(clean)) a = ARTICLES.find(x => x.code === _customEanMap.get(clean));
+    // 4) IDB EAN map
+    if (!a && window._eanMap) { const c = window._eanMap.get(clean); if (c) a = ARTICLES.find(x => x.code === c); }
+    if (!a) return;
+    setLast({...a, ts:Date.now()});
+    setHistory(h => [{code:a.code, lib:a.lib, ts:Date.now()}, ...h].slice(0,8));
+  };
   const onKey = (e) => {
     if (e.key === 'Enter' && buf.trim()) {
-      const code = buf.trim().replace(/\D/g,'');
-      const a = ARTICLES.find(x=>x.code===code) || ARTICLES[Math.floor(Math.random()*ARTICLES.length)]; // fallback demo
-      setLast({...a, ts:Date.now()});
-      setHistory(h => [{code:a.code, lib:a.lib, ts:Date.now()}, ...h].slice(0,8));
+      resolveAndShow(buf.trim());
       setBuf('');
     }
   };
 
-  // Demo trigger button (since users don't have a real Zebra)
-  const fakeScan = (code) => {
-    const a = ARTICLES.find(x=>x.code===code); if (!a) return;
-    setLast({...a, ts:Date.now()});
-    setHistory(h => [{code:a.code, lib:a.lib, ts:Date.now()}, ...h].slice(0,8));
-  };
+  const fakeScan = (code) => resolveAndShow(code);
 
   return (
     <>
@@ -1786,7 +1792,7 @@ function DouchetteScreen({ onBack, onArticle }) {
         autoFocus
         inputMode="none"
         readOnly={false}
-        style={{position:'absolute',opacity:0,pointerEvents:'none',width:1,height:1,top:0,left:0}}
+        style={{position:'absolute',opacity:0.01,width:1,height:1,top:-100,left:0,border:'none',outline:'none'}}
       />
       <div style={{flex:1,padding:'14px 16px',overflow:'auto',display:'flex',flexDirection:'column'}}>
         {!last ? (
