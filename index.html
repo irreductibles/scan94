@@ -315,6 +315,13 @@ hydrateFromIDB();
 const findArt = (q) => {
   const c = q.replace(/\D/g,'');
   if (ARTICLES.find(a=>a.code===c)) return c;
+  // Ref fournisseur
+  const byRef = ARTICLES.find(a => a.refFourn && (a.refFourn === q || a.refFourn === q.toUpperCase()));
+  if (byRef) return byRef.code;
+  // Custom EAN
+  if (_customEanMap.has(c)) return _customEanMap.get(c);
+  // IDB EAN map
+  if (window._eanMap) { const m = window._eanMap.get(c); if (m) return m; }
   return null;
 };
 
@@ -2846,7 +2853,10 @@ function PCApp() {
   const lookup = (raw) => {
     const trimmed = String(raw||'').trim();
     if (!trimmed) return;
-    const c = findArt(trimmed);
+    // Code exact (6 chiffres, EAN, ref fournisseur)
+    let c = findArt(trimmed);
+    // Sinon prendre le 1er résultat de la recherche texte
+    if (!c && results.length > 0) c = results[0].code;
     if (c) {
       setCode(c);
       setQ('');
