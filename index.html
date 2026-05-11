@@ -1752,30 +1752,34 @@ function DouchetteScreen({ onBack, onArticle }) {
     return () => { clearInterval(id); document.removeEventListener('click', f); };
   }, []);
 
-  const onChange = (e) => {
-    const v = e.target.value;
-    setBuf(v);
-    lastKeyRef.current = Date.now();
-  };
+  const bufRef = useRef('');
+  const timerRef = useRef(null);
   const resolveAndShow = (raw) => {
     const clean = raw.replace(/\D/g,'');
-    // 1) Code article direct (6 chiffres)
     let a = ARTICLES.find(x => x.code === clean);
-    // 2) Ref fournisseur
     if (!a) a = ARTICLES.find(x => x.refFourn && (x.refFourn === raw || x.refFourn === raw.toUpperCase()));
-    // 3) Custom EAN
     if (!a && _customEanMap.has(clean)) a = ARTICLES.find(x => x.code === _customEanMap.get(clean));
-    // 4) IDB EAN map
     if (!a && window._eanMap) { const c = window._eanMap.get(clean); if (c) a = ARTICLES.find(x => x.code === c); }
     if (!a) return;
     setLast({...a, ts:Date.now()});
     setHistory(h => [{code:a.code, lib:a.lib, ts:Date.now()}, ...h].slice(0,8));
   };
+  const flush = () => {
+    const v = bufRef.current.trim();
+    if (v) resolveAndShow(v);
+    bufRef.current = '';
+    setBuf('');
+  };
+  const onChange = (e) => {
+    const v = e.target.value;
+    bufRef.current = v;
+    setBuf(v);
+    // Auto-flush après 80ms sans nouveau caractère (douchette rapide + pas de Enter)
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(flush, 80);
+  };
   const onKey = (e) => {
-    if (e.key === 'Enter' && buf.trim()) {
-      resolveAndShow(buf.trim());
-      setBuf('');
-    }
+    if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timerRef.current); flush(); }
   };
 
   const fakeScan = (code) => resolveAndShow(code);
@@ -1783,7 +1787,7 @@ function DouchetteScreen({ onBack, onArticle }) {
   return (
     <>
       <TopBar title="Mode douchette" sub="Scanner Zebra · clavier masqué" back onBack={onBack} onMenu={()=>{}} />
-      {/* Hidden input absorbs scanner keystrokes */}
+      {/* Input capte les keystrokes de la douchette */}
       <input
         ref={inputRef}
         value={buf}
@@ -1791,8 +1795,7 @@ function DouchetteScreen({ onBack, onArticle }) {
         onKeyDown={onKey}
         autoFocus
         inputMode="none"
-        readOnly={false}
-        style={{position:'absolute',opacity:0.01,width:1,height:1,top:-100,left:0,border:'none',outline:'none'}}
+        style={{position:'fixed',top:0,left:0,width:'100%',height:44,opacity:0.01,zIndex:-1,fontSize:16,border:'none'}}
       />
       <div style={{flex:1,padding:'14px 16px',overflow:'auto',display:'flex',flexDirection:'column'}}>
         {!last ? (
