@@ -76,6 +76,21 @@
   </div>
 </div>
 
+<script>
+// Global crash catcher — avant React/Babel
+window.onerror = function(msg, src, line, col, err) {
+  document.body.innerHTML = '<div style="padding:30px;color:#f87171;background:#0b1220;font-family:monospace;min-height:100dvh">'
+    + '<h2 style="font-weight:900;margin-bottom:12px">CRASH</h2>'
+    + '<pre style="font-size:12px;white-space:pre-wrap;color:#fca5a5">' + msg + '\n' + (src||'') + ':' + line + ':' + col + '\n' + (err?.stack||'') + '</pre>'
+    + '<button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;background:#60a5fa;color:#000;border:none;border-radius:8px;font-weight:700">Recharger</button></div>';
+};
+window.addEventListener('unhandledrejection', function(e) {
+  document.body.innerHTML = '<div style="padding:30px;color:#f87171;background:#0b1220;font-family:monospace;min-height:100dvh">'
+    + '<h2 style="font-weight:900;margin-bottom:12px">CRASH (Promise)</h2>'
+    + '<pre style="font-size:12px;white-space:pre-wrap;color:#fca5a5">' + (e.reason?.stack || e.reason || 'unknown') + '</pre>'
+    + '<button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;background:#60a5fa;color:#000;border:none;border-radius:8px;font-weight:700">Recharger</button></div>';
+});
+</script>
 <script type="text/babel">
 const { useState, useEffect, useMemo, useRef } = React;
 
@@ -349,6 +364,20 @@ const ICONS = {
   tag:'<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
   download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
 };
+
+// ── Error Boundary ───────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(p) { super(p); this.state = { err: null }; }
+  static getDerivedStateFromError(e) { return { err: e }; }
+  render() {
+    if (this.state.err) return React.createElement('div', {style:{padding:40,color:'#f87171',background:'#0b1220',minHeight:'100dvh'}},
+      React.createElement('h2',{style:{fontWeight:900,marginBottom:12}},'Erreur — appli crashée'),
+      React.createElement('pre',{style:{fontSize:12,whiteSpace:'pre-wrap',color:'#fca5a5'}}, String(this.state.err?.stack||this.state.err)),
+      React.createElement('button',{onClick:()=>this.setState({err:null}),style:{marginTop:16,padding:'10px 20px',background:'#60a5fa',color:'#000',border:'none',borderRadius:8,fontWeight:700,cursor:'pointer'}},'Relancer')
+    );
+    return this.props.children;
+  }
+}
 
 // ── Pages ─────────────────────────────────────────────────────
 function App() {
@@ -675,6 +704,7 @@ function App() {
       }} />}
       {sheet === 'camera' && <CameraSheet continu={scanContinu} onClose={()=>setSheet(null)} onPick={(c)=>{
         setSheet(null);
+        if (!ARTICLES.find(x=>x.code===c)) { setSheet({type:'unknown', code:c}); return; }
         const fromInv = invScanFromInvRef.current; invScanFromInvRef.current = false;
         if (fromInv && invMode && invZone && !INV_CODES.includes(c) && ARTICLES.find(x=>x.code===c)) {
           const a = ARTICLES.find(x=>x.code===c);
@@ -1065,7 +1095,17 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, onNext
   const [detailsOpen, setDetailsOpen] = useState(false);
   const a = ARTICLES.find(x=>x.code===code);
   const [invCount, setInvCount] = useState(invCurrentCount != null ? invCurrentCount : (a?.stock ?? 0));
-  if (!a) return null;
+  if (!a) return (
+    <>
+      <TopBar title="Article introuvable" sub={code} back onBack={onBack} onMenu={()=>{}} />
+      <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,textAlign:'center'}}>
+        <div style={{fontSize:48,marginBottom:16}}>?</div>
+        <div style={{fontSize:18,fontWeight:900,color:T.t1}}>Code {code}</div>
+        <div style={{fontSize:13,color:T.t2,marginTop:6}}>Cet article n'existe pas dans le catalogue chargé.</div>
+        <button onClick={onBack} style={{marginTop:20,padding:'12px 24px',background:T.accent,color:'#1a0e05',border:'none',borderRadius:10,fontWeight:800,fontSize:14,cursor:'pointer'}}>Retour</button>
+      </div>
+    </>
+  );
   const v = VC[a.verdict];
 
   // ── Écran OK (article sans action requise) — escape hatch via "Détails"
@@ -3112,7 +3152,7 @@ function PCApp() {
 }
 
 if (IS_PC) document.body.classList.add('pc-mode');
-ReactDOM.createRoot(document.getElementById('root')).render(IS_PC ? <PCApp /> : <App />);
+ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary>{IS_PC ? <PCApp /> : <App />}</ErrorBoundary>);
 </script>
 </body>
 </html>
