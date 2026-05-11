@@ -614,13 +614,49 @@ function App() {
         if (k === 'purge') { ARTICLES = loadEngineData(ENGINE_DATA); DATA_SOURCE = 'mock'; window.dispatchEvent(new CustomEvent('prisme-data', { detail:{ count: ARTICLES.length, source:'mock' } })); showToast('Cache purgé'); }
         if (k === 'import') {
           const inp = document.createElement('input');
-          inp.type = 'file'; inp.accept = '.json,application/json';
+          inp.type = 'file'; inp.accept = '.json,.csv,application/json,text/csv';
           inp.onchange = () => {
             const f = inp.files?.[0]; if (!f) return;
             const rd = new FileReader();
             rd.onload = () => {
+              const txt = rd.result;
+              // Détecter CSV ZZAT (séparateur ;, colonnes Article/Stock)
+              if (f.name.toLowerCase().endsWith('.csv') || (txt[0] !== '{' && txt[0] !== '[' && txt.includes(';'))) {
+                try {
+                  const lines = txt.split('\n').filter(l => l.trim());
+                  const hdr = lines[0].split(';').map(h => h.trim().toLowerCase());
+                  const iArt = hdr.findIndex(h => h === 'article');
+                  const iStk = hdr.findIndex(h => h === 'stock');
+                  const iMin = hdr.findIndex(h => /qte\s*min/.test(h));
+                  const iMax = hdr.findIndex(h => /qte\s*max/.test(h));
+                  const iEmpl = hdr.findIndex(h => h === 'emplacement');
+                  const iStat = hdr.findIndex(h => h === 'statut');
+                  if (iArt < 0 || iStk < 0) { showToast('✕ CSV invalide — colonnes Article/Stock manquantes'); return; }
+                  let up = 0;
+                  for (let i = 1; i < lines.length; i++) {
+                    const cols = lines[i].split(';').map(c => c.trim());
+                    const code = cols[iArt];
+                    const a = ARTICLES.find(x => x.code === code);
+                    if (!a) continue;
+                    a.stock = parseInt(cols[iStk]) || 0;
+                    if (iMin >= 0) a.min = parseInt(cols[iMin]) || 0;
+                    if (iMax >= 0) a.max = parseInt(cols[iMax]) || 0;
+                    if (iEmpl >= 0 && cols[iEmpl]) a.empl = cols[iEmpl];
+                    if (iStat >= 0 && cols[iStat]) a.statut = cols[iStat];
+                    a.verdict = _verdict(a.stock, a.min, a.max);
+                    a.primary = _primary(a.verdict, a.stock, a.min, a.max, a.statut);
+                    a.secondary = _secondary(a._raw || {});
+                    up++;
+                  }
+                  DATA_SOURCE = 'zzat';
+                  window.dispatchEvent(new CustomEvent('prisme-data', { detail:{ count: ARTICLES.length, source:'zzat' } }));
+                  showToast(`✓ ${up} articles mis à jour depuis ZZAT`);
+                } catch(e) { showToast('✕ Erreur lecture CSV'); }
+                return;
+              }
+              // JSON classique
               try {
-                const j = JSON.parse(rd.result);
+                const j = JSON.parse(txt);
                 const rows = Array.isArray(j) ? j
                            : Array.isArray(j.articles) ? j.articles
                            : Array.isArray(j.finalData) ? j.finalData
@@ -1401,7 +1437,7 @@ function ZonePickerSheet({ onClose, onPick }) {
 
 function MenuSheet({ onClose, onItem, invMode, invZone }) {
   const items = [
-    { k:'import', l:'Importer un export JSON', s:'finalData / articles · remplace les données', dot:'#34d399' },
+    { k:'import', l:'Importer JSON ou ZZAT', s:'JSON PRISME ou CSV état du stock ERP', dot:'#34d399' },
     invMode
       ? { k:'inv', l:`Reprendre l'inventaire · ${invZone||'—'}`, s:'Continuer le comptage en cours', dot:'#fbbf24' }
       : { k:'inv', l:'Démarrer un inventaire', s:'Compter une zone', dot:'#22c55e' },
