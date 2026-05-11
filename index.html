@@ -1084,7 +1084,8 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, onNext
             <Ico d={ICONS.check} s={48} sw={3} />
           </div>
           <div style={{fontSize:22,fontWeight:900,color:T.t1}}>Tout est OK</div>
-          <div style={{fontSize:13,color:T.t2,marginTop:6,maxWidth:280,lineHeight:1.4}}>{a.lib}</div>
+          <div style={{fontSize:20,fontWeight:900,color:T.t1,marginTop:8,letterSpacing:.5}} className="tn">{a.code}</div>
+          <div style={{fontSize:13,color:T.t2,marginTop:4,maxWidth:280,lineHeight:1.4}}>{a.lib}</div>
           <div style={{marginTop:22,padding:'10px 14px',background:T.card,borderRadius:12,border:`1px solid ${T.border}`,display:'grid',gridTemplateColumns:'repeat(4,minmax(48px,1fr))',gap:14}}>
             {[['Stock', a.stock, '#86efac'],['Min', a.min, T.t1],['Max', a.max, T.t1],['Couv.', a.couv+'j', T.t1]].map(([k,val,c])=>(
               <div key={k} style={{textAlign:'center'}}>
@@ -1437,7 +1438,7 @@ function ZonePickerSheet({ onClose, onPick }) {
 
 function MenuSheet({ onClose, onItem, invMode, invZone }) {
   const items = [
-    { k:'import', l:'Importer JSON ou ZZAT', s:'JSON PRISME ou CSV état du stock ERP', dot:'#34d399' },
+    { k:'import', l:'Importer JSON ou CSV', s:'JSON PRISME ou CSV état du stock ERP', dot:'#34d399' },
     invMode
       ? { k:'inv', l:`Reprendre l'inventaire · ${invZone||'—'}`, s:'Continuer le comptage en cours', dot:'#fbbf24' }
       : { k:'inv', l:'Démarrer un inventaire', s:'Compter une zone', dot:'#22c55e' },
