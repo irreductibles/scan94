@@ -1607,8 +1607,8 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
           }
           tryAdd(artCode, barcode);
         } else {
-          // Code inconnu → notifier le parent
-          if (onUnknown) onUnknown(barcode);
+          // Code inconnu → notifier le parent (mode direct seulement)
+          if (!continu && onUnknown) { onUnknown(barcode); return; }
         }
       }
     } catch (e) {
