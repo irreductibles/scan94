@@ -1694,6 +1694,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const lastCodesRef = useRef(new Map()); // Map<barcode, ts> anti-doublon brut
   const directBufRef = useRef(null); // buffer mode direct : {barcode, artCode, timer}
   const emptyFramesRef = useRef(0); // compteur frames sans détection (mode agressif)
+  const sharpenBufRef = useRef(null); // buffer réutilisé pour le sharpen (évite GC)
   const DIRECT_SCAN_SETTLE_MS = 120;
 
   // Résoudre un code-barre scanné → code article PRISME
@@ -1815,8 +1816,13 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
       g = ((g - 128) * CONTRAST + 128) | 0;
       d[i] = d[i+1] = d[i+2] = g < 0 ? 0 : g > 255 ? 255 : g;
     }
-    // 2) Sharpen (unsharp mask)
-    const tmp = new Uint8ClampedArray(d);
+    // 2) Sharpen (unsharp mask, buffer réutilisé)
+    const needSize = d.length;
+    if (!sharpenBufRef.current || sharpenBufRef.current.length < needSize) {
+      sharpenBufRef.current = new Uint8ClampedArray(needSize);
+    }
+    const tmp = sharpenBufRef.current;
+    tmp.set(d);
     const w4 = uw * 4;
     for (let y = 1; y < uh - 1; y++) {
       for (let x = 1; x < uw - 1; x++) {
