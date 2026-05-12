@@ -1768,11 +1768,21 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     ctx.drawImage(video, cx, sy, cw, ch, 0, 0, cw, ch);
     const imageData = ctx.getImageData(0, 0, cw, ch);
 
+    // Pre-processing : contraste + grayscale pour améliorer la lecture à distance
+    const d = imageData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      let g = (d[i] * 77 + d[i+1] * 150 + d[i+2] * 29) >> 8; // luminance rapide
+      g = ((g - 128) * 1.4 + 128) | 0; // contraste ×1.4
+      g = g < 0 ? 0 : g > 255 ? 255 : g;
+      d[i] = d[i+1] = d[i+2] = g;
+    }
+
     try {
       const hasZbar = typeof zbarWasm !== 'undefined';
       const zxingP = (typeof ZXingWASM !== 'undefined')
         ? ZXingWASM.readBarcodes(imageData, {
             tryHarder: true,
+            tryInvert: true,
             formats: ['EAN-13', 'EAN-8', 'Code128', 'Code39'],
             maxNumberOfSymbols: 4,
           }).then(res => res.map(r => ({ text: r.text, format: r.format })))
