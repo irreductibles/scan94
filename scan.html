@@ -411,6 +411,25 @@ const findArt = (q) => {
   return null;
 };
 
+// ── Haptic / Beep (iOS n'a pas navigator.vibrate) ────────────
+let _audioCtx = null;
+function _beep(freq=1200, ms=120) {
+  try { navigator.vibrate?.(ms); } catch(e){}
+  try {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = _audioCtx.createOscillator();
+    const gain = _audioCtx.createGain();
+    osc.connect(gain); gain.connect(_audioCtx.destination);
+    osc.frequency.value = freq;
+    osc.type = 'square';
+    gain.gain.value = 0.15;
+    osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + ms / 1000);
+    osc.stop(_audioCtx.currentTime + ms / 1000);
+  } catch(e){}
+}
+function _beepError() { _beep(440, 120); setTimeout(()=>_beep(330, 120), 140); }
+
 // ── Atoms ─────────────────────────────────────────────────────
 const Dot = ({c, s=8}) => <span style={{display:'inline-block',width:s,height:s,borderRadius:99,background:c}} />;
 const Ico = ({d, s=16, sw=2.5}) => (
@@ -1679,7 +1698,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
       return [{...a, count:1, firstTs:now, lastTs:now, barHint}, ...d];
     });
     setFlash(f => f + 1);
-    if (haptic && navigator.vibrate) { try { navigator.vibrate(15); } catch(e){} }
+    if (haptic) _beep();
   };
 
   // Boucle de scan caméra
@@ -1765,7 +1784,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
               directBufRef.current = null;
               if (!best) return;
               if (best.artCode) {
-                if (navigator.vibrate) try { navigator.vibrate(15); } catch(e){}
+                _beep();
                 onPick(best.artCode);
               } else if (best.barcode.length >= 8 && onUnknown) {
                 onUnknown(best.barcode);
@@ -1781,7 +1800,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
           tryAdd(artCode, barcode);
         } else if (barcode.length >= 8) {
           setUnknownNotice(barcode);
-          if (haptic && navigator.vibrate) { try { navigator.vibrate([30,50,30]); } catch(e){} }
+          if (haptic) _beepError();
         }
       }
     } catch (e) {
