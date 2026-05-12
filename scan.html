@@ -1855,7 +1855,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   return (
     <div className="sheet-bg" style={{position:'absolute',inset:0,background:'#000',zIndex:100,display:'flex',flexDirection:'column'}}>
       {/* Flash on detect */}
-      {flash > 0 && <div key={flash} style={{position:'absolute',inset:0,background:'rgba(34,197,94,.3)',pointerEvents:'none',zIndex:5,animation:'fadeFlash .35s ease-out forwards'}} />}
+      <div key={flash} style={{position:'absolute',inset:0,background:'rgba(34,197,94,.3)',pointerEvents:'none',zIndex:5,opacity:0,animation: flash > 0 ? 'fadeFlash .35s ease-out forwards' : 'none'}} />
 
       {/* Flux caméra */}
       <div style={{flex:1,position:'relative',overflow:'hidden',background:'#000'}}>
