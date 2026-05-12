@@ -1604,7 +1604,22 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     const imageData = ctx.getImageData(0, 0, cw, ch);
 
     try {
+      // 1) BarcodeDetector natif (meilleur pour EAN-13)
+      const nativeP = (typeof BarcodeDetector !== 'undefined')
+        ? new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128', 'code_39'] })
+            .detect(canvas).then(res => res.map(r => ({ text: r.rawValue, format: 'Native-' + r.format })))
+            .catch(() => [])
+        : Promise.resolve([]);
+
+      // 2) ZBar WASM
       const hasZbar = typeof zbarWasm !== 'undefined';
+      const zbarP = hasZbar
+        ? zbarWasm.scanImageData(imageData).then(symbols =>
+            symbols.map(s => ({ text: s.decode(), format: 'ZBar-' + s.typeName }))
+          ).catch(() => [])
+        : Promise.resolve([]);
+
+      // 3) ZXing WASM (fallback)
       const zxingP = (typeof ZXingWASM !== 'undefined')
         ? ZXingWASM.readBarcodes(imageData, {
             tryHarder: true,
@@ -1613,16 +1628,11 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
           }).then(res => res.map(r => ({ text: r.text, format: r.format })))
         : Promise.resolve([]);
 
-      const zbarP = hasZbar
-        ? zbarWasm.scanImageData(imageData).then(symbols =>
-            symbols.map(s => ({ text: s.decode(), format: 'ZBar-' + s.typeName }))
-          ).catch(() => [])
-        : Promise.resolve([]);
-
-      const [zxingRes, zbarRes] = await Promise.all([zxingP, zbarP]);
+      const [nativeRes, zbarRes, zxingRes] = await Promise.all([nativeP, zbarP, zxingP]);
       const seen = new Set();
       const merged = [];
-      for (const r of [...zbarRes, ...zxingRes]) {
+      // Priorité : natif > ZBar > ZXing
+      for (const r of [...nativeRes, ...zbarRes, ...zxingRes]) {
         if (!r.text || seen.has(r.text)) continue;
         seen.add(r.text);
         merged.push(r);
