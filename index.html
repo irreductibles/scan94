@@ -1526,6 +1526,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const scanTimer = useRef(null);
   const scanPassRef = useRef(0);
   const lastCodesRef = useRef(new Map()); // Map<barcode, ts> anti-doublon brut
+  const directBufRef = useRef(null); // buffer mode direct : {barcode, timer}
 
   // Résoudre un code-barre scanné → code article PRISME
   const resolveBarcode = (barcode) => {
@@ -1619,6 +1620,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         : Promise.resolve([]);
 
       const [zxingRes, zbarRes] = await Promise.all([zxingP, zbarP]);
+      if (zbarRes.length || zxingRes.length) console.log('[Scan]', zbarRes.map(r=>r.format+':'+r.text).join(' '), '|', zxingRes.map(r=>r.format+':'+r.text).join(' '));
       const seen = new Set();
       const merged = [];
       for (const r of [...zbarRes, ...zxingRes]) {
@@ -1638,17 +1640,28 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
 
         // Résoudre vers un article PRISME
         const artCode = resolveBarcode(barcode);
-        if (artCode) {
-          if (!continu) {
-            if (navigator.vibrate) try { navigator.vibrate(15); } catch(e){}
-            onPick(artCode);
-            return;
+        if (!continu) {
+          // Mode direct : bufferiser 300ms, garder le code le plus long
+          const buf = directBufRef.current;
+          if (!buf || barcode.length > buf.barcode.length) {
+            if (buf) clearTimeout(buf.timer);
+            const timer = setTimeout(() => {
+              const best = directBufRef.current;
+              directBufRef.current = null;
+              if (!best) return;
+              if (best.artCode) {
+                if (navigator.vibrate) try { navigator.vibrate(15); } catch(e){}
+                onPick(best.artCode);
+              } else if (best.barcode.length >= 8 && onUnknown) {
+                onUnknown(best.barcode);
+              }
+            }, 300);
+            directBufRef.current = { barcode, artCode, timer };
           }
+          continue;
+        }
+        if (artCode) {
           tryAdd(artCode, barcode);
-        } else if (barcode.length >= 8) {
-          // Code inconnu (EAN 8/13 chiffres) → proposer association
-          // Codes courts (5-7) ignorés : lectures partielles caméra
-          if (!continu && onUnknown) { onUnknown(barcode); return; }
         }
       }
     } catch (e) {
