@@ -1682,6 +1682,8 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const [dupNotice, setDupNotice] = useState(null);
   const [unknownNotice, setUnknownNotice] = useState(null); // barcode EAN non résolu
   const [batchOpen, setBatchOpen] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomMax, setZoomMax] = useState(1); // 1 = zoom non supporté
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -1894,6 +1896,17 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         });
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
+        // Zoom natif si supporté
+        try {
+          const track = stream.getVideoTracks()[0];
+          const caps = track.getCapabilities?.();
+          if (caps?.zoom) {
+            setZoomMax(caps.zoom.max);
+            const z = Math.min(1.5, caps.zoom.max);
+            await track.applyConstraints({ advanced: [{ zoom: z }] });
+            setZoomLevel(z);
+          }
+        } catch(e){}
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.play().then(() => { scanLoop(); });
@@ -1958,6 +1971,17 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
             </>
           )}
         </div>
+
+        {/* Zoom toggle */}
+        {zoomMax > 1 && (
+          <button onClick={()=>{
+            const next = zoomLevel > 1 ? 1 : Math.min(2, zoomMax);
+            try { streamRef.current?.getVideoTracks()[0].applyConstraints({ advanced: [{ zoom: next }] }); } catch(e){}
+            setZoomLevel(next);
+          }} style={{position:'absolute',top:14,left:62,height:38,padding:'0 12px',borderRadius:99,background:zoomLevel>1?'rgba(251,146,60,.9)':'rgba(0,0,0,.6)',border:'none',color:zoomLevel>1?'#1a0e05':'rgba(255,255,255,.7)',fontSize:12,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
+            <span style={{fontSize:14}}>⊕</span> {zoomLevel > 1 ? `×${zoomLevel.toFixed(1)}` : 'Zoom'}
+          </button>
+        )}
 
         {/* Haptic toggle */}
         <button onClick={()=>setHaptic(h=>!h)} style={{position:'absolute',top:14,right:96,width:38,height:38,borderRadius:99,background:'rgba(0,0,0,.6)',border:'none',color:haptic?'#fb923c':'rgba(255,255,255,.4)',padding:0,display:'flex',alignItems:'center',justifyContent:'center'}} title={haptic?'Vibreur on':'Vibreur off'}>
