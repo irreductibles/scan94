@@ -47,8 +47,7 @@
   @keyframes fade{from{opacity:0}to{opacity:1}}
   @keyframes pop{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
   @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
-  @keyframes scanline{0%{top:10%}50%{top:85%}100%{top:10%}}
-  @keyframes fadeFlash{0%{opacity:1}100%{opacity:0}}
+@keyframes fadeFlash{0%{opacity:1}100%{opacity:0}}
   @keyframes scanFlash{0%{background:rgba(251,146,60,.0)}30%{background:rgba(251,146,60,.18)}100%{background:rgba(251,146,60,0)}}
   .scan-flash{animation:scanFlash .35s ease-out}
   @keyframes pulseDot{0%,100%{opacity:.4;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
@@ -1707,7 +1706,6 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const scanTimer = useRef(null);
-  const scanPassRef = useRef(0);
   const lastCodesRef = useRef(new Map()); // Map<barcode, ts> anti-doublon brut
   const directBufRef = useRef(null); // buffer mode direct : {barcode, artCode, timer}
   const emptyFramesRef = useRef(0); // compteur frames sans détection
@@ -1771,24 +1769,25 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     }
     const canvas = canvasRef.current, ctx = ctxRef.current;
 
-    // Viewfinder : carré centré 76% largeur
-    const VF = 0.76;
-    const side = Math.round(Math.min(vw, vh) * VF);
-    const cx = Math.round((vw - side) / 2);
-    const cy = Math.round((vh - side) / 2);
+    // Viewfinder : aligner crop canvas sur le carré CSS (left:12%,top:15%,right:12%,aspectRatio:1)
+    // object-fit:cover → la vidéo est scalée pour couvrir le conteneur, puis croppée
+    const vidEl = video;
+    const dw = vidEl.clientWidth, dh = vidEl.clientHeight;
+    // Scale factor cover : max(dw/vw, dh/vh)
+    const scale = Math.max(dw / vw, dh / vh);
+    const rendW = vw * scale, rendH = vh * scale;
+    // Offset du crop cover (centré)
+    const offX = (rendW - dw) / 2, offY = (rendH - dh) / 2;
+    // Carré CSS : left=12% dw, top=15% dh, width=76% dw, height=76% dw (aspectRatio:1)
+    const cssL = 0.12 * dw, cssT = 0.15 * dh, cssSide = 0.76 * dw;
+    // Mapper vers coordonnées vidéo source
+    const sx = Math.round((cssL + offX) / scale);
+    const sy = Math.round((cssT + offY) / scale);
+    const side = Math.round(cssSide / scale);
 
-    // Alterner carré plein / bande laser
-    scanPassRef.current++;
-    let cw, ch, sy;
-    if (scanPassRef.current % 2 === 0) {
-      cw = side; ch = side; sy = cy;
-    } else {
-      const bandH = Math.round(side * 0.15);
-      cw = side; ch = bandH; sy = cy + Math.round((side - bandH) / 2);
-    }
-
-    canvas.width = cw; canvas.height = ch;
-    ctx.drawImage(video, cx, sy, cw, ch, 0, 0, cw, ch);
+    canvas.width = side; canvas.height = side;
+    ctx.drawImage(video, sx, sy, side, side, 0, 0, side, side);
+    const cw = side, ch = side;
     const imageData = ctx.getImageData(0, 0, cw, ch);
 
     const emptyFrames = emptyFramesRef.current;
@@ -1943,7 +1942,6 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
       <div style={{flex:1,position:'relative',overflow:'hidden',background:'#000'}}>
         <video ref={videoRef} playsInline autoPlay muted style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}} />
         <div style={{position:'absolute',inset:0,background:'repeating-linear-gradient(0deg,transparent 0,transparent 2px,rgba(255,255,255,.02) 2px,rgba(255,255,255,.02) 3px)'}} />
-        <div style={{position:'absolute',left:'12%',right:'12%',height:2,background:'linear-gradient(90deg,transparent,#fb923c,transparent)',animation:'scanline 2s ease-in-out infinite',boxShadow:'0 0 20px #fb923c'}} />
         <div style={{position:'absolute',left:'12%',top:'15%',right:'12%',aspectRatio:1,border:'2px solid rgba(255,255,255,.4)',borderRadius:18,boxShadow:'0 0 0 9999px rgba(0,0,0,.55)'}}>
           {['tl','tr','bl','br'].map(p => {
             const s = {position:'absolute',width:24,height:24,borderColor:'#fb923c',borderStyle:'solid',borderWidth:0,
