@@ -1640,6 +1640,8 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
 
         // Résoudre vers un article PRISME
         const artCode = resolveBarcode(barcode);
+        // Ignorer codes courts non résolus (lectures partielles)
+        if (!artCode && barcode.length < 8) continue;
         if (!continu) {
           // Mode direct : bufferiser 300ms, garder le code le plus long
           const buf = directBufRef.current;
@@ -1652,7 +1654,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
               if (best.artCode) {
                 if (navigator.vibrate) try { navigator.vibrate(15); } catch(e){}
                 onPick(best.artCode);
-              } else if (best.barcode.length >= 8 && onUnknown) {
+              } else if (onUnknown) {
                 onUnknown(best.barcode);
               }
             }, 300);
