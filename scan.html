@@ -1770,19 +1770,25 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     canvas.width = cw; canvas.height = ch;
     ctx.drawImage(video, cx, sy, cw, ch, 0, 0, cw, ch);
 
-    // Détection de flou (variance du Laplacien) — skip les frames floues
+    // Détection de flou (Sobel edge magnitude) — skip les frames floues
     const raw = ctx.getImageData(0, 0, cw, ch).data;
-    let lapSum = 0;
+    let edgeSum = 0, edgeCnt = 0;
     const rw4 = cw * 4;
-    for (let y = 1; y < ch - 1; y += 2) { // échantillonnage 1 ligne sur 2 pour la perf
+    for (let y = 1; y < ch - 1; y += 2) {
       for (let x = 1; x < cw - 1; x += 2) {
         const i = (y * cw + x) * 4;
-        const lap = 4 * raw[i] - raw[i-4] - raw[i+4] - raw[i-rw4] - raw[i+rw4];
-        lapSum += lap * lap;
+        // Sobel sur canal vert (proxy luminance rapide)
+        const g = raw[i+1];
+        const gx = -raw[i-4-rw4+1] - 2*raw[i-rw4+1] - raw[i+4-rw4+1]
+                   +raw[i-4+rw4+1] + 2*raw[i+rw4+1] + raw[i+4+rw4+1];
+        const gy = -raw[i-4-rw4+1] - 2*raw[i-4+1] - raw[i-4+rw4+1]
+                   +raw[i+4-rw4+1] + 2*raw[i+4+1] + raw[i+4+rw4+1];
+        edgeSum += (gx < 0 ? -gx : gx) + (gy < 0 ? -gy : gy);
+        edgeCnt++;
       }
     }
-    const sharpness = lapSum / ((cw >> 1) * (ch >> 1)) || 0;
-    if (sharpness < 140) { scanTimer.current = setTimeout(scanLoop, 40); return; }
+    const sharpness = edgeCnt > 0 ? edgeSum / edgeCnt : 0;
+    if (sharpness < 85) { scanTimer.current = setTimeout(scanLoop, 40); return; }
 
     // Mode agressif : après ~3s sans détection (38 frames à 80ms), on pousse le traitement
     const aggressive = emptyFramesRef.current > 38;
