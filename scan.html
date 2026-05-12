@@ -63,20 +63,6 @@
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.0.3/dist/iife/reader/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@undecaf/zbar-wasm@0.11.0/dist/index.js"></script>
-<script type="module">
-// rxing — 3ème moteur barcode (Rust WASM, meilleur à distance)
-try {
-  const bg = await import('https://cdn.jsdelivr.net/npm/rxing-wasm@0.5.5/rxing_wasm_bg.js');
-  const resp = await fetch('https://cdn.jsdelivr.net/npm/rxing-wasm@0.5.5/rxing_wasm_bg.wasm');
-  const buf = await resp.arrayBuffer();
-  const importObj = { './rxing_wasm_bg.js': {} };
-  for (const [k, v] of Object.entries(bg)) { if (typeof v === 'function') importObj['./rxing_wasm_bg.js'][k] = v; }
-  const { instance } = await WebAssembly.instantiate(buf, importObj);
-  bg.__wbg_set_wasm(instance.exports);
-  window._rxing = bg;
-  console.log('[Scan] rxing WASM loaded');
-} catch(e) { console.warn('[Scan] rxing load error:', e); }
-</script>
 </head>
 <body>
 <div id="stage">
@@ -1769,10 +1755,10 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     if (haptic) _beep();
   };
 
-  // Boucle de scan caméra — 3 moteurs, zéro preprocessing
+  // Boucle de scan caméra — 2 moteurs, zéro preprocessing
   // Stage 1 (0-5 frames)  : ZXing seul (5ms)
   // Stage 2 (5-12 frames) : ZXing + ZBar
-  // Stage 3 (12+ frames)  : ZXing tryHarder + ZBar + rxing (distance)
+  // Stage 3 (12+ frames)  : ZXing tryHarder + ZBar
   const scanLoop = async () => {
     const video = videoRef.current;
     if (!video || !streamRef.current) return;
@@ -1811,7 +1797,6 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     try {
       const hasZxing = typeof ZXingWASM !== 'undefined';
       const hasZbar = typeof zbarWasm !== 'undefined';
-      const hasRxing = !!window._rxing;
 
       // ZXing toujours (5ms), tryHarder en stage 3
       const zxingP = hasZxing
@@ -1831,23 +1816,10 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
           ).catch(() => [])
         : Promise.resolve([]);
 
-      // rxing en stage 3 (meilleur à distance)
-      let rxingP = Promise.resolve([]);
-      if (stage >= 3 && hasRxing) {
-        rxingP = (async () => {
-          try {
-            const luma = window._rxing.convert_imagedata_to_luma(imageData);
-            const hints = new window._rxing.DecodeHintDictionary();
-            const res = window._rxing.decode_multi(luma, cw, ch, hints);
-            return res?.length ? res.map(r => ({ text: String(r.text || r).replace(/\s/g, ''), format: 'rxing' })) : [];
-          } catch(e) { return []; }
-        })();
-      }
-
-      const [zxingRes, zbarRes, rxingRes] = await Promise.all([zxingP, zbarP, rxingP]);
+      const [zxingRes, zbarRes] = await Promise.all([zxingP, zbarP]);
       const seen = new Set();
       const merged = [];
-      for (const r of [...zxingRes, ...zbarRes, ...rxingRes]) {
+      for (const r of [...zxingRes, ...zbarRes]) {
         if (!r.text || seen.has(r.text)) continue;
         seen.add(r.text);
         merged.push(r);
@@ -1904,8 +1876,8 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
       console.warn('[Scan] erreur:', e);
     }
 
-    // Stage 1: 50ms (~20fps), Stage 2: 65ms, Stage 3: 100ms (rxing ~98ms)
-    scanTimer.current = setTimeout(scanLoop, [50, 65, 100][stage - 1]);
+    // Stage 1: 50ms (~20fps), Stage 2: 65ms, Stage 3: 80ms
+    scanTimer.current = setTimeout(scanLoop, [50, 65, 80][stage - 1]);
   };
 
   // Démarrer la caméra au montage
@@ -1924,12 +1896,16 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         });
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
-        // Autofocus continu
+        // Autofocus continu + zoom ×1.5
         try {
           const track = stream.getVideoTracks()[0];
           const caps = track.getCapabilities?.();
           if (caps?.focusMode?.includes('continuous')) {
             await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+          }
+          if (caps?.zoom) {
+            const z = Math.min(1.5, caps.zoom.max);
+            await track.applyConstraints({ advanced: [{ zoom: z }] });
           }
         } catch(e){}
         if (videoRef.current) {
