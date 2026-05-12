@@ -105,7 +105,7 @@ const AGENCY = (() => {
 let SCAN_CONFIG = {};
 fetch('config.json',{cache:'no-cache'}).then(r=>r.ok?r.json():{}).catch(()=>({})).then(c=>{
   SCAN_CONFIG=c;
-  if (c.retour===false) { ARTICLES = loadEngineData(window._rawEngineData||ENGINE_DATA); document.dispatchEvent(new Event('prisme-data')); }
+  if (c.retour===false) { ARTICLES = loadEngineData(window._rawEngineData||ENGINE_DATA); _rebuildArtIndex(); document.dispatchEvent(new Event('prisme-data')); }
 });
 
 fetch('js/catalogue-marques.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(data => {
@@ -236,6 +236,16 @@ function loadEngineData(engine) {
 
 // Mutable on purpose : remplacé par hydrateFromIDB() au boot quand dispo.
 let ARTICLES = [];
+let _artByCode = new Map(); // code → article (O(1) lookup)
+let _artByRef  = new Map(); // refFourn → article (O(1) lookup)
+function _rebuildArtIndex() {
+  _artByCode = new Map();
+  _artByRef  = new Map();
+  for (const a of ARTICLES) {
+    _artByCode.set(a.code, a);
+    if (a.refFourn) _artByRef.set(a.refFourn, a);
+  }
+}
 let DATA_SOURCE = 'loading'; // 'loading' | 'mock' | 'idb'
 let CATALOGUE = null; // catalogue-marques.json brut {M,F,S,A,E,R}
 
@@ -297,7 +307,7 @@ function getCustomEansForCode(code) { return [..._customEanMap.entries()].filter
 // Lit IndexedDB PRISME (clé 'scan' prioritaire, sinon 'current') comme scan.js.
 // Si trouvé : remplace ARTICLES et notifie l'app (custom event 'prisme-data').
 function hydrateFromIDB() {
-  if (typeof indexedDB === 'undefined') { ARTICLES = loadEngineData(ENGINE_DATA); DATA_SOURCE = 'mock'; return; }
+  if (typeof indexedDB === 'undefined') { ARTICLES = loadEngineData(ENGINE_DATA); _rebuildArtIndex(); DATA_SOURCE = 'mock'; return; }
   let req;
   try { req = indexedDB.open('PRISME', 2); } catch (e) { return; }
   req.onerror = () => {};
@@ -309,7 +319,7 @@ function hydrateFromIDB() {
   };
   req.onsuccess = () => {
     const db = req.result;
-    if (!db.objectStoreNames.contains('session')) { ARTICLES = loadEngineData(ENGINE_DATA); DATA_SOURCE = 'mock'; return; }
+    if (!db.objectStoreNames.contains('session')) { ARTICLES = loadEngineData(ENGINE_DATA); _rebuildArtIndex(); DATA_SOURCE = 'mock'; return; }
     const tx = db.transaction('session', 'readonly');
     const store = tx.objectStore('session');
     const grab = (key) => new Promise(res => {
@@ -325,7 +335,7 @@ function hydrateFromIDB() {
       const hasLive = current?.finalData?.length > 0;
       // Si session PRISME live → la préférer
       if (hasLive) {
-        ARTICLES = loadEngineData(current.finalData);
+        ARTICLES = loadEngineData(current.finalData); _rebuildArtIndex();
         DATA_SOURCE = 'idb';
         if (current.selectedMyStore) { CTX.agency = current.selectedMyStore; CTX.greeting = CTX.agency; }
         console.log('[Prisme] IDB session live · ' + ARTICLES.length + ' articles');
@@ -342,11 +352,11 @@ function hydrateFromIDB() {
                        : null);
           if (!rows) {
             console.log('[Prisme] IDB vide → fallback mock');
-            ARTICLES = loadEngineData(ENGINE_DATA); DATA_SOURCE = 'mock';
+            ARTICLES = loadEngineData(ENGINE_DATA); _rebuildArtIndex(); DATA_SOURCE = 'mock';
             window.dispatchEvent(new CustomEvent('prisme-data', { detail:{ count: ARTICLES.length, source:'mock' } }));
             return;
           }
-          ARTICLES = loadEngineData(rows);
+          ARTICLES = loadEngineData(rows); _rebuildArtIndex();
           DATA_SOURCE = 'idb';
           console.log('[Prisme] IDB scan · ' + ARTICLES.length + ' articles');
           window.dispatchEvent(new CustomEvent('prisme-data', { detail:{ count: ARTICLES.length, source:'idb' } }));
@@ -368,7 +378,7 @@ function _fetchScanJson() {
         window._eanMap = new Map(Object.entries(data.ean));
         console.log('[Prisme] EAN map JSON · ' + window._eanMap.size + ' entrées');
       }
-      ARTICLES = loadEngineData(rows);
+      ARTICLES = loadEngineData(rows); _rebuildArtIndex();
       DATA_SOURCE = 'json';
       const m = f.match(/prisme-scan-(.+)\.json/);
       if (m) CTX.agency = m[1];
@@ -383,20 +393,20 @@ function _fetchScanJson() {
 hydrateFromIDB();
 const findArt = (q) => {
   const c = q.replace(/\D/g,'');
-  if (ARTICLES.find(a=>a.code===c)) return c;
+  if (_artByCode.get(c)) return c;
   if (_catalogHas(c)) return _normCode(c);
   // Ref fournisseur
-  const byRef = ARTICLES.find(a => a.refFourn && (a.refFourn === q || a.refFourn === q.toUpperCase()));
+  const byRef = _artByRef.get(q) || _artByRef.get(q.toUpperCase());
   if (byRef) return byRef.code;
   // Custom EAN
   if (_customEanMap.has(c)) {
     const m = _normCode(_customEanMap.get(c));
-    if (ARTICLES.find(a => a.code === m) || _catalogHas(m)) return m;
+    if (_artByCode.get(m) || _catalogHas(m)) return m;
   }
   // IDB EAN map
   if (window._eanMap) {
     const m = _normCode(window._eanMap.get(c));
-    if (ARTICLES.find(a => a.code === m) || _catalogHas(m)) return m;
+    if (_artByCode.get(m) || _catalogHas(m)) return m;
   }
   return null;
 };
@@ -512,7 +522,7 @@ function App() {
   };
   const addAction = (code, kind, label, dest, eta) => {
     const id = 'a' + Math.random().toString(36).slice(2,8);
-    const a = ARTICLES.find(x=>x.code===code);
+    const a = _artByCode.get(code);
     const prev = a ? {stock:a.stock, min:a.min, max:a.max, empl:a.empl} : null;
     // Appliquer l'effet visuel immédiat
     if (a) {
@@ -541,7 +551,7 @@ function App() {
     setActions(ac => {
       const removed = (ac[code]||[]).find(x => x.id === id);
       if (removed?._prev) {
-        const a = ARTICLES.find(x=>x.code===code);
+        const a = _artByCode.get(code);
         if (a) { a.stock = removed._prev.stock; a.min = removed._prev.min; a.max = removed._prev.max; if (removed._prev.empl) a.empl = removed._prev.empl; _refreshArticle(a); }
       }
       const next = {...ac};
@@ -559,7 +569,7 @@ function App() {
   const cancelInv = () => { setInvMode(false); setInvZone(null); setInvCounts({}); setInvExtras({}); setPage('home'); showToast('Inventaire abandonné'); };
   const pushInv = () => {
     const ecarts = INV_CODES.filter(c => {
-      const a = ARTICLES.find(x=>x.code===c); const n = invCounts[c];
+      const a = _artByCode.get(c); const n = invCounts[c];
       return a && n != null && n !== a.stock;
     });
     setInvMode(false); setInvZone(null); setInvCounts({}); setPage('home');
@@ -646,11 +656,11 @@ function App() {
         onPick={openArticle}
         onValidExtras={()=>{
           const codes = Object.keys(invExtras);
-          codes.forEach(c => { const a = ARTICLES.find(x=>x.code===c); if (a) a.empl = invZone; });
+          codes.forEach(c => { const a = _artByCode.get(c); if (a) a.empl = invZone; });
           // Ajouter dans invCounts comme conformes (stock ERP = compté)
           setInvCounts(prev => {
             const next = {...prev};
-            codes.forEach(c => { const a = ARTICLES.find(x=>x.code===c); if (a) next[c] = invExtras[c] ?? a.stock; });
+            codes.forEach(c => { const a = _artByCode.get(c); if (a) next[c] = invExtras[c] ?? a.stock; });
             return next;
           });
           showToast(`✓ ${codes.length} article${codes.length>1?'s':''} · emplacement corrigé`);
@@ -676,7 +686,7 @@ function App() {
         code={sheet.code}
         onClose={()=>setSheet(null)}
         onConfirm={(newStock)=>{
-          const a = ARTICLES.find(x=>x.code===sheet.code);
+          const a = _artByCode.get(sheet.code);
           addAction(sheet.code, 'stock', `Modifier le stock (${a.stock} → ${newStock})`, 'ERP central · sync', '≤ 5 min');
         }}
       />}
@@ -684,7 +694,7 @@ function App() {
         code={sheet.code}
         onClose={()=>setSheet(null)}
         onPick={(newEmpl)=>{
-          const a = ARTICLES.find(x=>x.code===sheet.code);
+          const a = _artByCode.get(sheet.code);
           addAction(sheet.code, 'emp', `Modifier emplacement (${a.empl} → ${newEmpl})`, 'ERP central', 'Immédiat');
         }}
       />}
@@ -705,7 +715,7 @@ function App() {
         if (k === 'invStop') { if (confirm("Abandonner l'inventaire en cours ? Les comptages seront perdus.")) cancelInv(); }
         if (k === 'ean') { setSheet('ean'); return; }
         if (k === 'sync') { showToast('Synchronisation…'); _fetchScanJson().then(ok => { if (ok) showToast('✓ ' + ARTICLES.length + ' articles synchronisés'); else showToast('✕ Aucun fichier trouvé'); }); }
-        if (k === 'purge') { ARTICLES = loadEngineData(ENGINE_DATA); DATA_SOURCE = 'mock'; window.dispatchEvent(new CustomEvent('prisme-data', { detail:{ count: ARTICLES.length, source:'mock' } })); showToast('Cache purgé'); }
+        if (k === 'purge') { ARTICLES = loadEngineData(ENGINE_DATA); _rebuildArtIndex(); DATA_SOURCE = 'mock'; window.dispatchEvent(new CustomEvent('prisme-data', { detail:{ count: ARTICLES.length, source:'mock' } })); showToast('Cache purgé'); }
         if (k === 'import') {
           const inp = document.createElement('input');
           inp.type = 'file'; inp.accept = '.json,.csv,application/json,text/csv';
@@ -730,7 +740,7 @@ function App() {
                   for (let i = 1; i < lines.length; i++) {
                     const cols = lines[i].split(';').map(c => c.trim());
                     const code = cols[iArt];
-                    const a = ARTICLES.find(x => x.code === code);
+                    const a = _artByCode.get(code);
                     if (!a) continue;
                     a.stock = parseInt(cols[iStk]) || 0;
                     if (iMin >= 0) a.min = parseInt(cols[iMin]) || 0;
@@ -756,7 +766,7 @@ function App() {
                            : Array.isArray(j.finalData) ? j.finalData
                            : null;
                 if (!rows || !rows.length) { showToast('✕ JSON invalide'); return; }
-                ARTICLES = loadEngineData(rows);
+                ARTICLES = loadEngineData(rows); _rebuildArtIndex();
                 DATA_SOURCE = 'import';
                 window.dispatchEvent(new CustomEvent('prisme-data', { detail:{ count: ARTICLES.length, source:'import' } }));
                 showToast(`✓ ${ARTICLES.length} articles importés`);
@@ -769,10 +779,10 @@ function App() {
       }} />}
       {sheet === 'camera' && <CameraSheet continu={scanContinu} onClose={()=>setSheet(null)} onPick={(c)=>{
         setSheet(null);
-        if (!ARTICLES.find(x=>x.code===c) && !_catalogHas(c)) { setSheet({type:'unknown', code:c}); return; }
+        if (!_artByCode.get(c) && !_catalogHas(c)) { setSheet({type:'unknown', code:c}); return; }
         const fromInv = invScanFromInvRef.current; invScanFromInvRef.current = false;
-        if (fromInv && invMode && invZone && !INV_CODES.includes(c) && ARTICLES.find(x=>x.code===c)) {
-          const a = ARTICLES.find(x=>x.code===c);
+        if (fromInv && invMode && invZone && !INV_CODES.includes(c) && _artByCode.get(c)) {
+          const a = _artByCode.get(c);
           setInvExtras(e => ({...e, [c]: (e[c] ?? a.stock)}));
         }
         openArticle(c);
@@ -783,7 +793,7 @@ function App() {
         setActions(prev => {
           const next = {...prev};
           for (const d of items) {
-            const a = ARTICLES.find(x=>x.code===d.code);
+            const a = _artByCode.get(d.code);
             if (!a) continue;
             // Si déjà en attente pour cet article, skip
             if (next[d.code]?.some(x=>x.status==='pending')) continue;
@@ -1015,7 +1025,7 @@ function HomeScreen({ t, onSearch, onScan, onScanDirect, onArticle, onInv, onDou
         <div style={{...sectionLabel, marginTop:14}}>Récents</div>
         <div style={{display:'flex',flexDirection:'column',gap:6,paddingBottom:12}}>
           {recents.slice(0,4).map(c => {
-            const a = ARTICLES.find(x=>x.code===c); if (!a) return null;
+            const a = _artByCode.get(c); if (!a) return null;
             const v = VC[a.verdict];
             return (
               <button key={c} onClick={()=>onArticle(c)} style={{
@@ -1158,7 +1168,7 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, onNext
   const [showDetails, setShowDetails] = useState(false);
   const [editQty, setEditQty] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const a = ARTICLES.find(x=>x.code===code) || _catalogArticle(code);
+  const a = _artByCode.get(code) || _catalogArticle(code);
   const [invCount, setInvCount] = useState(invCurrentCount != null ? invCurrentCount : (a?.stock ?? 0));
   if (!a) return (
     <>
@@ -1473,7 +1483,7 @@ function Sheet({ children, onClose, title, h='auto' }) {
 }
 
 function ActionsSheet({ code, existing, onClose, onAdd }) {
-  const a = ARTICLES.find(x=>x.code===code);
+  const a = _artByCode.get(code);
   const v = VC[a.verdict];
   const doneKinds = new Set((existing||[]).filter(x=>x.status==='pending'||x.status==='validee').map(x=>x.kind));
   const all = [];
@@ -1633,24 +1643,24 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const resolveBarcode = (barcode) => {
     const clean = barcode.replace(/\D/g, '');
     // 1) Code article direct (6 chiffres)
-    let a = ARTICLES.find(x => x.code === clean);
+    let a = _artByCode.get(clean);
     if (a) return a.code;
     // 2) Ref fournisseur
-    a = ARTICLES.find(x => x.refFourn && (x.refFourn === barcode || x.refFourn === barcode.toUpperCase()));
+    a = _artByRef.get(barcode) || _artByRef.get(barcode.toUpperCase());
     if (a) return a.code;
     // 3) Custom EAN (associations terrain)
     const custom = _customEanMap.get(clean);
-    if (custom && (ARTICLES.find(x => x.code === custom) || _catalogHas(custom))) return _normCode(custom);
+    if (custom && (_artByCode.get(custom) || _catalogHas(custom))) return _normCode(custom);
     // 4) EAN via IDB eanMap (chargé globalement)
     if (window._eanMap) {
       const c = _normCode(window._eanMap.get(clean));
-      if (c && (ARTICLES.find(x => x.code === c) || _catalogHas(c))) return c;
+      if (c && (_artByCode.get(c) || _catalogHas(c))) return c;
     }
     return null; // inconnu
   };
 
   const tryAdd = (code, barcode) => {
-    const a = ARTICLES.find(x=>x.code===code) || _catalogArticle(code); if (!a) return;
+    const a = _artByCode.get(code) || _catalogArticle(code); if (!a) return;
     const barHint = (barcode && barcode !== code) ? '....' + barcode.slice(-4) : '';
     const now = Date.now();
     setDetected(d => {
@@ -1721,7 +1731,6 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         : Promise.resolve([]);
 
       const [zxingRes, zbarRes] = await Promise.all([zxingP, zbarP]);
-      if (zbarRes.length || zxingRes.length) console.log('[Scan]', zbarRes.map(r=>r.format+':'+r.text).join(' '), '|', zxingRes.map(r=>r.format+':'+r.text).join(' '));
       const seen = new Set();
       const merged = [];
       for (const r of [...zbarRes, ...zxingRes]) {
@@ -1962,10 +1971,10 @@ function DouchetteScreen({ onBack, onArticle }) {
   const timerRef = useRef(null);
   const resolveAndShow = (raw) => {
     const clean = raw.replace(/\D/g,'');
-    let a = ARTICLES.find(x => x.code === clean);
-    if (!a) a = ARTICLES.find(x => x.refFourn && (x.refFourn === raw || x.refFourn === raw.toUpperCase()));
-    if (!a && _customEanMap.has(clean)) { const m = _normCode(_customEanMap.get(clean)); a = ARTICLES.find(x => x.code === m) || _catalogArticle(m); }
-    if (!a && window._eanMap) { const c = _normCode(window._eanMap.get(clean)); a = ARTICLES.find(x => x.code === c) || _catalogArticle(c); }
+    let a = _artByCode.get(clean);
+    if (!a) a = _artByRef.get(raw) || _artByRef.get(raw.toUpperCase());
+    if (!a && _customEanMap.has(clean)) { const m = _normCode(_customEanMap.get(clean)); a = _artByCode.get(m) || _catalogArticle(m); }
+    if (!a && window._eanMap) { const c = _normCode(window._eanMap.get(clean)); a = _artByCode.get(c) || _catalogArticle(c); }
     if (!a) a = _catalogArticle(clean);
     if (!a) return;
     setLast({...a, ts:Date.now()});
@@ -2079,7 +2088,7 @@ function EanSheet({ onClose, onPick }) {
     if (entries.length === 0) return;
     let csv = 'EAN;Code Article;Libelle\n';
     for (const [ean, code] of entries) {
-      const a = ARTICLES.find(x => x.code === code);
+      const a = _artByCode.get(code);
       csv += `${ean};${code};${(a?.lib || '').replace(/;/g, ',')}\n`;
     }
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -2097,7 +2106,7 @@ function EanSheet({ onClose, onPick }) {
           <>
             <div style={{maxHeight:'50vh',overflowY:'auto'}}>
               {entries.map(([ean, code]) => {
-                const a = ARTICLES.find(x => x.code === code);
+                const a = _artByCode.get(code);
                 return (
                   <div key={ean} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:T.card,borderRadius:10,border:`1px solid ${T.border}`,marginBottom:4}}>
                     <div style={{flex:1,minWidth:0,cursor:'pointer'}} onClick={()=>onPick(code)}>
@@ -2175,8 +2184,8 @@ function JournalSheet({ onClose, actions, onPick, onUndo, onValidate, onPush, on
   Object.keys(actions).forEach(c => actions[c].forEach(x => all.push({...x, code:c})));
   // Trier par emplacement croissant
   all.sort((a,b) => {
-    const ea = ARTICLES.find(x=>x.code===a.code)?.empl || 'ZZZ';
-    const eb = ARTICLES.find(x=>x.code===b.code)?.empl || 'ZZZ';
+    const ea = _artByCode.get(a.code)?.empl || 'ZZZ';
+    const eb = _artByCode.get(b.code)?.empl || 'ZZZ';
     return ea.localeCompare(eb);
   });
   const pending = all.filter(x=>x.status==='pending' && x.kind!=='etiquette');
@@ -2184,7 +2193,7 @@ function JournalSheet({ onClose, actions, onPick, onUndo, onValidate, onPush, on
   const etiquettes = all.filter(x=>x.kind==='etiquette' && x.status!=='refusee');
 
   const Row = ({ x }) => {
-    const a = ARTICLES.find(y=>y.code===x.code);
+    const a = _artByCode.get(x.code);
     const v = a ? VC[a.verdict] : null;
     const sty = x.status==='validee'
       ? { dot:'#22c55e', bg:'rgba(34,197,94,.08)', border:'rgba(34,197,94,.25)' }
@@ -2272,7 +2281,7 @@ function LabelsSheet({ onClose, actions, onMarkPrinted, onMarkAllPrinted }) {
   const seen = new Set();
   const list = items.filter(x => { if (seen.has(x.code)) return false; seen.add(x.code); return true; })
     .map(x => {
-      const a = ARTICLES.find(y=>y.code===x.code);
+      const a = _artByCode.get(x.code);
       return { ...x, lib: a?.lib || '—', status: x.status };
     });
   const pending = list.filter(x => x.status === 'pending');
@@ -2373,7 +2382,7 @@ function LabelsSheet({ onClose, actions, onMarkPrinted, onMarkAllPrinted }) {
 
 // ── StockEditSheet — saisie compté physique ───────────────────
 function StockEditSheet({ code, onClose, onConfirm }) {
-  const a = ARTICLES.find(x=>x.code===code);
+  const a = _artByCode.get(code);
   const [val, setVal] = useState(String(a ? a.stock : ''));
   if (!a) return null;
   const n = parseInt(val,10);
@@ -2432,7 +2441,7 @@ function ConfirmSheet({ info, onClose, onUndo, onHome, onNext, tourZone }) {
     const t = setTimeout(() => setCount(c => c-1), 1000);
     return () => clearTimeout(t);
   }, [count]);
-  const a = ARTICLES.find(x=>x.code===info.code);
+  const a = _artByCode.get(info.code);
   return (
     <Sheet onClose={onClose} title="Action enregistrée">
       <div style={{padding:'4px 14px 0'}}>
@@ -2477,7 +2486,7 @@ function ConfirmSheet({ info, onClose, onUndo, onHome, onNext, tourZone }) {
 // ── Inventaire — liste de zone ────────────────────────────────
 function InvListScreen({ zone, codes, counts, onPick, onExit, onScan, onSummary }) {
   const items = codes.map(c => {
-    const a = ARTICLES.find(x=>x.code===c); if (!a) return null;
+    const a = _artByCode.get(c); if (!a) return null;
     const n = counts[c];
     const counted = n != null;
     const ecart = counted ? n - a.stock : null;
@@ -2578,7 +2587,7 @@ const invRow = (bg, border) => ({
 function InvSummaryScreen({ zone, codes, counts, extras={}, onBack, onPush, onPick, onValidExtras, onRemoveExtra }) {
   // Tri croissant par code, comme dans scan.js
   const sortedCodes = [...codes].sort((a,b)=>a.localeCompare(b));
-  const expected = sortedCodes.map(c => ARTICLES.find(x=>x.code===c)).filter(Boolean);
+  const expected = sortedCodes.map(c => _artByCode.get(c)).filter(Boolean);
   const scanned = expected.filter(a => counts[a.code] != null).map(a => ({ a, n: counts[a.code], ecart: counts[a.code] - a.stock }));
   const nonScanned = expected.filter(a => counts[a.code] == null);
   const corrections = scanned.filter(i=>i.ecart !== 0);
@@ -2586,7 +2595,7 @@ function InvSummaryScreen({ zone, codes, counts, extras={}, onBack, onPush, onPi
   const items = scanned;
   const valDelta = corrections.reduce((s,i)=>s + i.ecart * i.a.prix, 0);
   const extrasList = Object.keys(extras).map(c => {
-    const a = ARTICLES.find(x=>x.code===c); if (!a) return null;
+    const a = _artByCode.get(c); if (!a) return null;
     return { a, n: extras[c] };
   }).filter(Boolean).sort((x,y)=>x.a.code.localeCompare(y.a.code));
   return (
@@ -2724,7 +2733,7 @@ function InvSummaryScreen({ zone, codes, counts, extras={}, onBack, onPush, onPi
 // ── Toast ─────────────────────────────────────────────────────
 // ── EmplacementSheet (pick new location) ──────────────────────
 function EmplacementSheet({ code, onClose, onPick }) {
-  const a = ARTICLES.find(x=>x.code===code);
+  const a = _artByCode.get(code);
   const [val, setVal] = useState('');
   const [scanning, setScanning] = useState(false);
   const allEmpl = [...new Set(ARTICLES.map(x=>x.empl))];
@@ -3087,7 +3096,7 @@ function PCApp() {
     }).slice(0,12);
   }, [q]);
 
-  const article = code ? ARTICLES.find(x=>x.code===code) : null;
+  const article = code ? _artByCode.get(code) : null;
 
   return (
     <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',background:T.bg,color:T.t1,fontSize:14}}>
@@ -3140,7 +3149,7 @@ function PCApp() {
                   </div>
                 )}
                 {history.slice(0,15).map(h => {
-                  const a = ARTICLES.find(x=>x.code===h.code); if (!a) return null;
+                  const a = _artByCode.get(h.code); if (!a) return null;
                   const v = VC[a.verdict];
                   const t = new Date(h.ts);
                   const tStr = t.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
@@ -3239,7 +3248,7 @@ function PCApp() {
             <div style={{flex:1,overflow:'auto',padding:'8px 8px'}}>
               {history.length === 0 && <div style={{padding:'30px 14px',textAlign:'center',color:T.t3,fontSize:11}}>Aucun scan pour le moment.</div>}
               {history.map((h, i) => {
-                const a = ARTICLES.find(x=>x.code===h.code);
+                const a = _artByCode.get(h.code);
                 const v = a ? VC[a.verdict] : VC.ok;
                 const t = new Date(h.ts);
                 const tStr = t.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
