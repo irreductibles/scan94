@@ -63,6 +63,20 @@
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.0.3/dist/iife/reader/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@undecaf/zbar-wasm@0.11.0/dist/index.js"></script>
+<script type="module">
+// rxing — 3ème moteur barcode (Rust WASM, meilleur à distance)
+try {
+  const bg = await import('https://cdn.jsdelivr.net/npm/rxing-wasm@0.5.5/rxing_wasm_bg.js');
+  const resp = await fetch('https://cdn.jsdelivr.net/npm/rxing-wasm@0.5.5/rxing_wasm_bg.wasm');
+  const buf = await resp.arrayBuffer();
+  const importObj = { './rxing_wasm_bg.js': {} };
+  for (const [k, v] of Object.entries(bg)) { if (typeof v === 'function') importObj['./rxing_wasm_bg.js'][k] = v; }
+  const { instance } = await WebAssembly.instantiate(buf, importObj);
+  bg.__wbg_set_wasm(instance.exports);
+  window._rxing = bg;
+  console.log('[Scan] rxing WASM loaded');
+} catch(e) { console.warn('[Scan] rxing load error:', e); }
+</script>
 </head>
 <body>
 <div id="stage">
@@ -1701,8 +1715,6 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const [dupNotice, setDupNotice] = useState(null);
   const [unknownNotice, setUnknownNotice] = useState(null); // barcode EAN non résolu
   const [batchOpen, setBatchOpen] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [zoomMax, setZoomMax] = useState(1); // 1 = zoom non supporté
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -1712,8 +1724,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const scanPassRef = useRef(0);
   const lastCodesRef = useRef(new Map()); // Map<barcode, ts> anti-doublon brut
   const directBufRef = useRef(null); // buffer mode direct : {barcode, artCode, timer}
-  const emptyFramesRef = useRef(0); // compteur frames sans détection (mode agressif)
-  const sharpenBufRef = useRef(null); // buffer réutilisé pour le sharpen (évite GC)
+  const emptyFramesRef = useRef(0); // compteur frames sans détection
   const DIRECT_SCAN_SETTLE_MS = 120;
 
   // Résoudre un code-barre scanné → code article PRISME
@@ -1758,10 +1769,10 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     if (haptic) _beep();
   };
 
-  // Boucle de scan caméra — pipeline en 3 étages pour max perf
-  // Stage 1 (frames 0-5)  : ZBar seul sur crop brut, pas de preprocessing → ultra rapide
-  // Stage 2 (frames 5-12) : ZBar + ZXing sur crop brut, pas de preprocessing
-  // Stage 3 (frames 12+)  : full pipeline (Sobel + upscale + contrast + sharpen + ZBar + ZXing)
+  // Boucle de scan caméra — 3 moteurs, zéro preprocessing
+  // Stage 1 (0-5 frames)  : ZXing seul (5ms)
+  // Stage 2 (5-12 frames) : ZXing + ZBar
+  // Stage 3 (12+ frames)  : ZXing tryHarder + ZBar + rxing (distance)
   const scanLoop = async () => {
     const video = videoRef.current;
     if (!video || !streamRef.current) return;
@@ -1792,80 +1803,17 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
 
     canvas.width = cw; canvas.height = ch;
     ctx.drawImage(video, cx, sy, cw, ch, 0, 0, cw, ch);
+    const imageData = ctx.getImageData(0, 0, cw, ch);
 
     const emptyFrames = emptyFramesRef.current;
-    // 4 étages : 1=brut/ZBar, 2=brut/both, 3=upscale seul, 4=upscale+contraste+sharpen
-    const stage = emptyFrames < 5 ? 1 : emptyFrames < 12 ? 2 : emptyFrames < 38 ? 3 : 4;
-    let imageData;
-
-    if (stage <= 2) {
-      // Stage 1-2 : crop brut, pas de preprocessing
-      imageData = ctx.getImageData(0, 0, cw, ch);
-    } else {
-      // Stage 3-4 : Sobel blur check
-      const raw = ctx.getImageData(0, 0, cw, ch).data;
-      let edgeSum = 0, edgeCnt = 0;
-      const stride = cw * 4;
-      for (let y = 1; y < ch - 1; y += 2) {
-        for (let x = 1; x < cw - 1; x += 2) {
-          const i = (y * cw + x) * 4 + 1;
-          const gx = (raw[i-stride-4] + (raw[i-4]<<1) + raw[i+stride-4])
-                   - (raw[i-stride+4] + (raw[i+4]<<1) + raw[i+stride+4]);
-          const gy = (raw[i-stride-4] + (raw[i-stride]<<1) + raw[i-stride+4])
-                   - (raw[i+stride-4] + (raw[i+stride]<<1) + raw[i+stride+4]);
-          edgeSum += (gx < 0 ? -gx : gx) + (gy < 0 ? -gy : gy);
-          edgeCnt++;
-        }
-      }
-      if (edgeCnt > 0 && (edgeSum / edgeCnt) < 85) { scanTimer.current = setTimeout(scanLoop, 40); return; }
-
-      // Upscale
-      const UPS = stage === 4 ? 2.0 : 1.5;
-      const uw = Math.round(cw * UPS), uh = Math.round(ch * UPS);
-      let upCanvas = canvasRef._upCanvas;
-      if (!upCanvas || upCanvas.width !== uw || upCanvas.height !== uh) {
-        upCanvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(uw, uh) : document.createElement('canvas');
-        upCanvas.width = uw; upCanvas.height = uh;
-        canvasRef._upCanvas = upCanvas;
-        canvasRef._upCtx = upCanvas.getContext('2d', { willReadFrequently: true });
-      }
-      const uctx = canvasRef._upCtx;
-      uctx.imageSmoothingEnabled = true;
-      uctx.imageSmoothingQuality = 'high';
-      uctx.drawImage(canvas, 0, 0, uw, uh);
-      imageData = uctx.getImageData(0, 0, uw, uh);
-
-      // Stage 4 seulement : grayscale + contraste + sharpen
-      if (stage === 4) {
-        const d = imageData.data;
-        for (let i = 0; i < d.length; i += 4) {
-          let g = (d[i] * 77 + d[i+1] * 150 + d[i+2] * 29) >> 8;
-          g = ((g - 128) * 2.0 + 128) | 0;
-          d[i] = d[i+1] = d[i+2] = g < 0 ? 0 : g > 255 ? 255 : g;
-        }
-        const needSize = d.length;
-        if (!sharpenBufRef.current || sharpenBufRef.current.length < needSize) {
-          sharpenBufRef.current = new Uint8ClampedArray(needSize);
-        }
-        const tmp = sharpenBufRef.current;
-        tmp.set(d);
-        const w4 = uw * 4;
-        for (let y = 1; y < uh - 1; y++) {
-          for (let x = 1; x < uw - 1; x++) {
-            const i = (y * uw + x) * 4;
-            const v = tmp[i] + ((tmp[i] - (tmp[i-4] + tmp[i+4] + tmp[i-w4] + tmp[i+w4]) / 4) * 1.5) | 0;
-            d[i] = d[i+1] = d[i+2] = v < 0 ? 0 : v > 255 ? 255 : v;
-          }
-        }
-      }
-    }
+    const stage = emptyFrames < 5 ? 1 : emptyFrames < 12 ? 2 : 3;
 
     try {
       const hasZxing = typeof ZXingWASM !== 'undefined';
       const hasZbar = typeof zbarWasm !== 'undefined';
+      const hasRxing = !!window._rxing;
 
-      // Stage 1 : ZXing seul (5ms, le plus rapide)
-      // Stage 2+ : ZXing + ZBar en parallèle
+      // ZXing toujours (5ms), tryHarder en stage 3
       const zxingP = hasZxing
         ? ZXingWASM.readBarcodes(imageData, {
             tryHarder: stage >= 3,
@@ -1876,17 +1824,30 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
           .catch(() => [])
         : Promise.resolve([]);
 
+      // ZBar en stage 2+
       const zbarP = (stage >= 2 && hasZbar)
         ? zbarWasm.scanImageData(imageData).then(symbols =>
             symbols.map(s => ({ text: s.decode(), format: 'ZBar-' + s.typeName }))
           ).catch(() => [])
         : Promise.resolve([]);
 
-      const [zxingRes, zbarRes] = await Promise.all([zxingP, zbarP]);
+      // rxing en stage 3 (meilleur à distance)
+      let rxingP = Promise.resolve([]);
+      if (stage >= 3 && hasRxing) {
+        rxingP = (async () => {
+          try {
+            const luma = window._rxing.convert_imagedata_to_luma(imageData);
+            const hints = new window._rxing.DecodeHintDictionary();
+            const res = window._rxing.decode_multi(luma, cw, ch, hints);
+            return res?.length ? res.map(r => ({ text: String(r.text || r).replace(/\s/g, ''), format: 'rxing' })) : [];
+          } catch(e) { return []; }
+        })();
+      }
+
+      const [zxingRes, zbarRes, rxingRes] = await Promise.all([zxingP, zbarP, rxingP]);
       const seen = new Set();
       const merged = [];
-      // ZXing d'abord (plus rapide), ZBar complète
-      for (const r of [...zxingRes, ...zbarRes]) {
+      for (const r of [...zxingRes, ...zbarRes, ...rxingRes]) {
         if (!r.text || seen.has(r.text)) continue;
         seen.add(r.text);
         merged.push(r);
@@ -1943,8 +1904,8 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
       console.warn('[Scan] erreur:', e);
     }
 
-    // Stage 1: 50ms (~20fps), Stage 2: 65ms, Stage 3: 80ms, Stage 4: 100ms
-    scanTimer.current = setTimeout(scanLoop, [50, 65, 80, 100][stage - 1]);
+    // Stage 1: 50ms (~20fps), Stage 2: 65ms, Stage 3: 100ms (rxing ~98ms)
+    scanTimer.current = setTimeout(scanLoop, [50, 65, 100][stage - 1]);
   };
 
   // Démarrer la caméra au montage
@@ -1963,19 +1924,12 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         });
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
-        // Autofocus continu + zoom natif
+        // Autofocus continu
         try {
           const track = stream.getVideoTracks()[0];
           const caps = track.getCapabilities?.();
-          // Forcer autofocus continu si supporté
           if (caps?.focusMode?.includes('continuous')) {
             await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-          }
-          if (caps?.zoom) {
-            setZoomMax(caps.zoom.max);
-            const z = Math.min(1.5, caps.zoom.max);
-            await track.applyConstraints({ advanced: [{ zoom: z }] });
-            setZoomLevel(z);
           }
         } catch(e){}
         if (videoRef.current) {
@@ -2042,18 +1996,6 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
             </>
           )}
         </div>
-
-        {/* Zoom toggle */}
-        {zoomMax > 1 && (
-          <button onClick={()=>{
-            const next = zoomLevel >= 2 ? 1.5 : Math.min(2, zoomMax);
-            try { streamRef.current?.getVideoTracks()[0].applyConstraints({ advanced: [{ zoom: next }] }); } catch(e){}
-            emptyFramesRef.current = 0; // reset pipeline stage on zoom change
-            setZoomLevel(next);
-          }} style={{position:'absolute',top:14,left:62,height:38,padding:'0 12px',borderRadius:99,background:zoomLevel>1?'rgba(251,146,60,.9)':'rgba(0,0,0,.6)',border:'none',color:zoomLevel>1?'#1a0e05':'rgba(255,255,255,.7)',fontSize:12,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
-            <span style={{fontSize:14}}>⊕</span> {zoomLevel > 1 ? `×${zoomLevel.toFixed(1)}` : 'Zoom'}
-          </button>
-        )}
 
         {/* Haptic toggle */}
         <button onClick={()=>setHaptic(h=>!h)} style={{position:'absolute',top:14,right:96,width:38,height:38,borderRadius:99,background:'rgba(0,0,0,.6)',border:'none',color:haptic?'#fb923c':'rgba(255,255,255,.4)',padding:0,display:'flex',alignItems:'center',justifyContent:'center'}} title={haptic?'Vibreur on':'Vibreur off'}>
