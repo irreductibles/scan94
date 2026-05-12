@@ -108,6 +108,19 @@ fetch('config.json',{cache:'no-cache'}).then(r=>r.ok?r.json():{}).catch(()=>({})
   if (c.retour===false) { ARTICLES = loadEngineData(window._rawEngineData||ENGINE_DATA); document.dispatchEvent(new Event('prisme-data')); }
 });
 
+fetch('js/catalogue-marques.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(data => {
+  if (!data) return;
+  CATALOGUE = data;
+  if (data.E && typeof data.E === 'object') {
+    if (!window._eanMap) window._eanMap = new Map();
+    for (const [ean, code] of Object.entries(data.E)) {
+      if (!window._eanMap.has(ean)) window._eanMap.set(ean, _normCode(code));
+    }
+    console.log('[Prisme] Catalogue · ' + Object.keys(data.A || {}).length + ' articles · EAN ' + window._eanMap.size);
+  }
+  window.dispatchEvent(new Event('prisme-catalogue'));
+}).catch(() => {});
+
 const CTX = {
   greeting: AGENCY,
   agency: AGENCY,
@@ -224,6 +237,47 @@ function loadEngineData(engine) {
 // Mutable on purpose : remplacé par hydrateFromIDB() au boot quand dispo.
 let ARTICLES = [];
 let DATA_SOURCE = 'loading'; // 'loading' | 'mock' | 'idb'
+let CATALOGUE = null; // catalogue-marques.json brut {M,F,S,A,E,R}
+
+function _normCode(raw) {
+  const s = String(raw || '').replace(/\D/g, '');
+  return s ? s.replace(/^0+/, '').padStart(6, '0') : '';
+}
+
+function _catalogHas(code) {
+  const c = _normCode(code);
+  return !!(c && CATALOGUE?.A?.[c]);
+}
+
+function _catalogArticle(code) {
+  const c = _normCode(code);
+  const entry = CATALOGUE?.A?.[c];
+  if (!entry) return null;
+  const fam = CATALOGUE.F?.[entry[1]];
+  const famLabel = fam ? [fam[1], fam[3]].filter(Boolean).join(' › ') : 'Catalogue Legallais';
+  return {
+    code: c,
+    lib: entry[2] || '—',
+    marque: CATALOGUE.M?.[entry[0]] || '',
+    fam: famLabel || 'Catalogue Legallais',
+    empl: 'Hors agence',
+    stock: 0,
+    prix: null,
+    marge: null,
+    min: 0,
+    max: 0,
+    erpMin: 0,
+    erpMax: 0,
+    refFourn: CATALOGUE.R?.[c] || null,
+    couv: 0,
+    statut: CATALOGUE.S?.[entry[3]] || 'Catalogue',
+    verdict: 'ok',
+    sq: 'Hors agence',
+    primary: null,
+    secondary: [],
+    catalogOnly: true,
+  };
+}
 
 // ── Associations EAN custom ─────────────────────────────────
 // Map<ean, articleCode> — persisté en localStorage
@@ -330,13 +384,20 @@ hydrateFromIDB();
 const findArt = (q) => {
   const c = q.replace(/\D/g,'');
   if (ARTICLES.find(a=>a.code===c)) return c;
+  if (_catalogHas(c)) return _normCode(c);
   // Ref fournisseur
   const byRef = ARTICLES.find(a => a.refFourn && (a.refFourn === q || a.refFourn === q.toUpperCase()));
   if (byRef) return byRef.code;
   // Custom EAN
-  if (_customEanMap.has(c)) return _customEanMap.get(c);
+  if (_customEanMap.has(c)) {
+    const m = _normCode(_customEanMap.get(c));
+    if (ARTICLES.find(a => a.code === m) || _catalogHas(m)) return m;
+  }
   // IDB EAN map
-  if (window._eanMap) { const m = window._eanMap.get(c); if (m) return m; }
+  if (window._eanMap) {
+    const m = _normCode(window._eanMap.get(c));
+    if (ARTICLES.find(a => a.code === m) || _catalogHas(m)) return m;
+  }
   return null;
 };
 
@@ -388,7 +449,11 @@ function App() {
   useEffect(() => {
     const h = () => bump(v => v + 1);
     window.addEventListener('prisme-data', h);
-    return () => window.removeEventListener('prisme-data', h);
+    window.addEventListener('prisme-catalogue', h);
+    return () => {
+      window.removeEventListener('prisme-data', h);
+      window.removeEventListener('prisme-catalogue', h);
+    };
   }, []);
   const [page, setPage] = useState('home'); // home | search | article | invList | invSummary | douchette
   const [articleCode, setArticleCode] = useState(null);
@@ -704,7 +769,7 @@ function App() {
       }} />}
       {sheet === 'camera' && <CameraSheet continu={scanContinu} onClose={()=>setSheet(null)} onPick={(c)=>{
         setSheet(null);
-        if (!ARTICLES.find(x=>x.code===c)) { setSheet({type:'unknown', code:c}); return; }
+        if (!ARTICLES.find(x=>x.code===c) && !_catalogHas(c)) { setSheet({type:'unknown', code:c}); return; }
         const fromInv = invScanFromInvRef.current; invScanFromInvRef.current = false;
         if (fromInv && invMode && invZone && !INV_CODES.includes(c) && ARTICLES.find(x=>x.code===c)) {
           const a = ARTICLES.find(x=>x.code===c);
@@ -1093,7 +1158,7 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, onNext
   const [showDetails, setShowDetails] = useState(false);
   const [editQty, setEditQty] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const a = ARTICLES.find(x=>x.code===code);
+  const a = ARTICLES.find(x=>x.code===code) || _catalogArticle(code);
   const [invCount, setInvCount] = useState(invCurrentCount != null ? invCurrentCount : (a?.stock ?? 0));
   if (!a) return (
     <>
@@ -1107,6 +1172,41 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, onNext
     </>
   );
   const v = VC[a.verdict];
+
+  if (a.catalogOnly) {
+    return (
+      <>
+        <TopBar title={a.code} sub="Article hors agence" back onBack={onBack} onMenu={()=>{}} />
+        <div style={{flex:1,padding:'18px 14px',overflow:'auto'}}>
+          <div style={{padding:'18px 16px',background:T.card,borderRadius:16,border:`1px solid ${T.border}`}}>
+            <div style={{fontSize:10,color:T.accent,fontWeight:900,letterSpacing:1.1,textTransform:'uppercase'}}>Catalogue Legallais</div>
+            <div style={{fontSize:24,fontWeight:900,color:T.t1,marginTop:8,letterSpacing:.5}} className="tn">{a.code}</div>
+            <div style={{fontSize:15,fontWeight:800,color:T.t1,marginTop:10,lineHeight:1.35}}>{a.lib}</div>
+            <div style={{fontSize:12,color:T.t2,marginTop:8,lineHeight:1.5}}>{a.marque}{a.marque && a.fam ? ' · ' : ''}{a.fam}</div>
+            <div style={{marginTop:14,padding:'12px',borderRadius:12,background:'rgba(251,146,60,.10)',border:'1px solid rgba(251,146,60,.28)'}}>
+              <div style={{fontSize:12,fontWeight:800,color:T.accent}}>Article non référencé dans cette agence</div>
+              <div style={{fontSize:11,color:T.t2,marginTop:4,lineHeight:1.45}}>Le code-barres existe au catalogue, mais pas dans la base stock locale chargée.</div>
+            </div>
+            <div style={{marginTop:14,display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+              <div style={{padding:'10px',background:'#0a0c10',borderRadius:10}}>
+                <div style={{fontSize:8,color:T.t3,textTransform:'uppercase',fontWeight:900,letterSpacing:.6}}>Statut</div>
+                <div style={{fontSize:12,color:T.t1,fontWeight:800,marginTop:3}}>{a.statut}</div>
+              </div>
+              <div style={{padding:'10px',background:'#0a0c10',borderRadius:10}}>
+                <div style={{fontSize:8,color:T.t3,textTransform:'uppercase',fontWeight:900,letterSpacing:.6}}>Emplacement</div>
+                <div style={{fontSize:12,color:T.t1,fontWeight:800,marginTop:3}}>{a.empl}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style={{padding:'10px 14px calc(14px + env(safe-area-inset-bottom))',background:T.bg,borderTop:`1px solid ${T.border}`}}>
+          <button onClick={onScan} style={{width:'100%',padding:'14px',borderRadius:12,border:'none',background:T.accent,color:'#1a0e05',fontSize:14,fontWeight:900,letterSpacing:.3,display:'flex',alignItems:'center',justifyContent:'center',gap:8,cursor:'pointer'}}>
+            <Ico d={ICONS.scan} s={18} sw={2.5} /> Scanner le suivant
+          </button>
+        </div>
+      </>
+    );
+  }
 
   // ── Écran OK (article sans action requise) — escape hatch via "Détails"
   if (!invMode && !a.primary && addedActions.length === 0 && !showDetails) {
@@ -1540,11 +1640,11 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     if (a) return a.code;
     // 3) Custom EAN (associations terrain)
     const custom = _customEanMap.get(clean);
-    if (custom) return custom;
+    if (custom && (ARTICLES.find(x => x.code === custom) || _catalogHas(custom))) return _normCode(custom);
     // 4) EAN via IDB eanMap (chargé globalement)
     if (window._eanMap) {
-      const c = window._eanMap.get(clean);
-      if (c) return c;
+      const c = _normCode(window._eanMap.get(clean));
+      if (c && (ARTICLES.find(x => x.code === c) || _catalogHas(c))) return c;
     }
     return null; // inconnu
   };
