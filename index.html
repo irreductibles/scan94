@@ -1526,7 +1526,6 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const scanTimer = useRef(null);
   const scanPassRef = useRef(0);
   const lastCodesRef = useRef(new Map()); // Map<barcode, ts> anti-doublon brut
-  const lastEanTsRef = useRef(0); // timestamp du dernier EAN 8+ chiffres détecté
 
   // Résoudre un code-barre scanné → code article PRISME
   const resolveBarcode = (barcode) => {
@@ -1604,22 +1603,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     const imageData = ctx.getImageData(0, 0, cw, ch);
 
     try {
-      // 1) BarcodeDetector natif (meilleur pour EAN-13)
-      const nativeP = (typeof BarcodeDetector !== 'undefined')
-        ? new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128', 'code_39'] })
-            .detect(canvas).then(res => res.map(r => ({ text: r.rawValue, format: 'Native-' + r.format })))
-            .catch(() => [])
-        : Promise.resolve([]);
-
-      // 2) ZBar WASM
       const hasZbar = typeof zbarWasm !== 'undefined';
-      const zbarP = hasZbar
-        ? zbarWasm.scanImageData(imageData).then(symbols =>
-            symbols.map(s => ({ text: s.decode(), format: 'ZBar-' + s.typeName }))
-          ).catch(() => [])
-        : Promise.resolve([]);
-
-      // 3) ZXing WASM (fallback)
       const zxingP = (typeof ZXingWASM !== 'undefined')
         ? ZXingWASM.readBarcodes(imageData, {
             tryHarder: true,
@@ -1628,27 +1612,25 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
           }).then(res => res.map(r => ({ text: r.text, format: r.format })))
         : Promise.resolve([]);
 
-      const [nativeRes, zbarRes, zxingRes] = await Promise.all([nativeP, zbarP, zxingP]);
+      const zbarP = hasZbar
+        ? zbarWasm.scanImageData(imageData).then(symbols =>
+            symbols.map(s => ({ text: s.decode(), format: 'ZBar-' + s.typeName }))
+          ).catch(() => [])
+        : Promise.resolve([]);
+
+      const [zxingRes, zbarRes] = await Promise.all([zxingP, zbarP]);
       const seen = new Set();
       const merged = [];
-      // Priorité : natif > ZBar > ZXing
-      for (const r of [...nativeRes, ...zbarRes, ...zxingRes]) {
+      for (const r of [...zbarRes, ...zxingRes]) {
         if (!r.text || seen.has(r.text)) continue;
         seen.add(r.text);
         merged.push(r);
       }
-      // Trier par longueur décroissante — EAN-13 avant codes courts
-      merged.sort((a, b) => b.text.length - a.text.length);
 
-      // Prioriser EAN (13/8 chiffres) vs Code128/Code39 (lectures partielles)
-      const hasEan = merged.some(r => /^\d{8}$|^\d{13}$/.test(r.text));
       const now = Date.now();
-      if (hasEan) lastEanTsRef.current = now;
       for (const r of merged) {
         const barcode = r.text;
         if (!/^\d{5,13}$/.test(barcode)) continue;
-        // Ignorer codes courts si un EAN a été vu dans cette frame ou dans les 3 dernières secondes
-        if (barcode.length < 8 && (hasEan || (now - lastEanTsRef.current < 3000))) continue;
         // Anti-doublon brut 2s sur le code-barre brut
         const prev = lastCodesRef.current.get(barcode);
         if (prev && now - prev < 2000) continue;
