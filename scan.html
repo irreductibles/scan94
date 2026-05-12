@@ -1098,6 +1098,7 @@ function ModeBtn({ dot, l, s, onClick, active }) {
 // ── SEARCH ────────────────────────────────────────────────────
 function SearchScreen({ onClose, onPick, onScan }) {
   const [q, setQ] = useState('');
+  const [catalogMode, setCatalogMode] = useState(false);
   const inputRef = useRef(null);
   useEffect(() => { setTimeout(()=>inputRef.current?.focus(), 50); }, []);
 
@@ -1105,11 +1106,27 @@ function SearchScreen({ onClose, onPick, onScan }) {
     if (!q.trim()) return [];
     const words = q.toLowerCase().split(/\s+/).filter(w=>w.length>=2);
     if (!words.length) return [];
-    return ARTICLES.filter(a => {
+    // Recherche locale
+    const local = ARTICLES.filter(a => {
       const hay = `${a.code} ${a.lib} ${a.empl} ${a.fam} ${a.marque}`.toLowerCase();
       return words.every(w => hay.includes(w));
-    }).slice(0,8);
-  }, [q]);
+    }).slice(0, catalogMode ? 4 : 8);
+    if (!catalogMode || !CATALOGUE?.A) return local;
+    // Recherche catalogue
+    const localCodes = new Set(local.map(a => a.code));
+    const catResults = [];
+    for (const [code, entry] of Object.entries(CATALOGUE.A)) {
+      if (localCodes.has(code)) continue;
+      const lib = (entry[2] || '').toLowerCase();
+      const marque = (CATALOGUE.M?.[entry[0]] || '').toLowerCase();
+      const hay = `${code} ${lib} ${marque}`;
+      if (words.every(w => hay.includes(w))) {
+        catResults.push(_catalogArticle(code));
+        if (catResults.length >= 8) break;
+      }
+    }
+    return [...local, ...catResults];
+  }, [q, catalogMode]);
 
   return (
     <>
@@ -1125,6 +1142,16 @@ function SearchScreen({ onClose, onPick, onScan }) {
           <Ico d={ICONS.scan} s={18} sw={2.5} />
         </button>
       </div>
+      {CATALOGUE && (
+        <div style={{padding:'4px 12px',display:'flex',alignItems:'center',gap:8,background:T.bg}}>
+          <button onClick={()=>setCatalogMode(m=>!m)} style={{
+            padding:'5px 10px',borderRadius:99,border:`1px solid ${catalogMode?'rgba(96,165,250,.6)':T.border}`,
+            background:catalogMode?'rgba(96,165,250,.15)':'transparent',
+            color:catalogMode?'#60a5fa':T.t3,fontSize:11,fontWeight:800,cursor:'pointer',
+          }}>{catalogMode ? '✓ Catalogue Legallais' : 'Catalogue'}</button>
+          {catalogMode && <span style={{fontSize:10,color:T.t3}}>{Object.keys(CATALOGUE.A).length.toLocaleString('fr-FR')} articles</span>}
+        </div>
+      )}
 
       <div style={{flex:1,overflow:'auto',padding:'8px 12px 12px'}}>
         {!q.trim() && (
@@ -1142,28 +1169,35 @@ function SearchScreen({ onClose, onPick, onScan }) {
           <div style={{textAlign:'center',padding:'40px 20px',color:T.t2}}>
             <div style={{fontSize:32,marginBottom:8}}>🔍</div>
             <div style={{fontSize:13}}>Aucun résultat pour « {q} »</div>
+            {!catalogMode && CATALOGUE && <button onClick={()=>setCatalogMode(true)} style={{marginTop:12,padding:'8px 14px',borderRadius:99,border:'1px solid rgba(96,165,250,.4)',background:'rgba(96,165,250,.1)',color:'#60a5fa',fontSize:12,fontWeight:700,cursor:'pointer'}}>Chercher dans le catalogue</button>}
           </div>
         )}
         {q.trim() && results.length > 0 && (
           <>
             <div style={sectionLabel}>{results.length} résultat{results.length>1?'s':''}</div>
             {results.map(a => {
-              const v = VC[a.verdict];
+              const v = VC[a.verdict] || VC.ok;
+              const isCat = a.catalogOnly;
               return (
                 <button key={a.code} onClick={()=>onPick(a.code)} className="pop" style={{
                   width:'100%',display:'flex',alignItems:'center',gap:10,padding:'11px 12px 11px 14px',
-                  background:T.card,borderRadius:12,border:`1px solid ${T.border}`,
-                  borderLeft:`3px solid ${v.edge}`,color:T.t1,textAlign:'left',marginBottom:6,
+                  background:T.card,borderRadius:12,border:`1px solid ${isCat?'rgba(96,165,250,.3)':T.border}`,
+                  borderLeft:`3px solid ${isCat?'#60a5fa':v.edge}`,color:T.t1,textAlign:'left',marginBottom:6,
                 }}>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:11,color:T.t3,fontWeight:600,letterSpacing:.5}} className="tn">{a.code}</div>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <span style={{fontSize:11,color:T.t3,fontWeight:600,letterSpacing:.5}} className="tn">{a.code}</span>
+                      {isCat && <span style={{fontSize:9,fontWeight:800,color:'#60a5fa',background:'rgba(96,165,250,.15)',border:'1px solid rgba(96,165,250,.3)',padding:'1px 6px',borderRadius:99}}>CATALOGUE</span>}
+                    </div>
                     <div style={{fontSize:13,fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{a.lib}</div>
-                    <div style={{fontSize:11,color:T.accent,fontWeight:600,marginTop:1}}>{a.empl}<span style={{color:T.t3,fontWeight:400,marginLeft:6}}>{a.marque}</span></div>
+                    <div style={{fontSize:11,color:isCat?'#60a5fa':T.accent,fontWeight:600,marginTop:1}}>{isCat?a.fam:a.empl}<span style={{color:T.t3,fontWeight:400,marginLeft:6}}>{a.marque}</span></div>
                   </div>
-                  <div style={{textAlign:'right'}}>
-                    <div style={{fontSize:18,fontWeight:800,color:v.fg,lineHeight:1}} className="tn">{a.stock}</div>
-                    <div style={{fontSize:9,color:T.t3,marginTop:2}} className="tn">{a.min}/{a.max}</div>
-                  </div>
+                  {!isCat && (
+                    <div style={{textAlign:'right'}}>
+                      <div style={{fontSize:18,fontWeight:800,color:v.fg,lineHeight:1}} className="tn">{a.stock}</div>
+                      <div style={{fontSize:9,color:T.t3,marginTop:2}} className="tn">{a.min}/{a.max}</div>
+                    </div>
+                  )}
                 </button>
               );
             })}
