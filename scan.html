@@ -1768,13 +1768,23 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     ctx.drawImage(video, cx, sy, cw, ch, 0, 0, cw, ch);
     const imageData = ctx.getImageData(0, 0, cw, ch);
 
-    // Pre-processing : contraste + grayscale pour améliorer la lecture à distance
+    // Pre-processing : grayscale → contraste → sharpen
     const d = imageData.data;
+    // 1) Grayscale + contraste ×1.4
     for (let i = 0; i < d.length; i += 4) {
-      let g = (d[i] * 77 + d[i+1] * 150 + d[i+2] * 29) >> 8; // luminance rapide
-      g = ((g - 128) * 1.4 + 128) | 0; // contraste ×1.4
-      g = g < 0 ? 0 : g > 255 ? 255 : g;
-      d[i] = d[i+1] = d[i+2] = g;
+      let g = (d[i] * 77 + d[i+1] * 150 + d[i+2] * 29) >> 8;
+      g = ((g - 128) * 1.4 + 128) | 0;
+      d[i] = d[i+1] = d[i+2] = g < 0 ? 0 : g > 255 ? 255 : g;
+    }
+    // 2) Sharpen léger (unsharp mask simplifié, coeff 0.7)
+    const tmp = new Uint8ClampedArray(d);
+    const w4 = cw * 4;
+    for (let y = 1; y < ch - 1; y++) {
+      for (let x = 1; x < cw - 1; x++) {
+        const i = (y * cw + x) * 4;
+        const v = tmp[i] + ((tmp[i] - (tmp[i-4] + tmp[i+4] + tmp[i-w4] + tmp[i+w4]) / 4) * 0.7) | 0;
+        d[i] = d[i+1] = d[i+2] = v < 0 ? 0 : v > 255 ? 255 : v;
+      }
     }
 
     try {
