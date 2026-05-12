@@ -117,6 +117,7 @@ fetch('js/catalogue-marques.json', { cache: 'no-cache' }).then(r => r.ok ? r.jso
       if (!window._eanMap.has(ean)) window._eanMap.set(ean, _normCode(code));
     }
     console.log('[Prisme] Catalogue · ' + Object.keys(data.A || {}).length + ' articles · EAN ' + window._eanMap.size);
+    _rebuildEanByCode();
   }
   window.dispatchEvent(new Event('prisme-catalogue'));
 }).catch(() => {});
@@ -246,6 +247,17 @@ function _rebuildArtIndex() {
     if (a.refFourn) _artByRef.set(a.refFourn, a);
   }
 }
+let _eanByCode = new Map(); // code → EAN (reverse lookup O(1))
+function _rebuildEanByCode() {
+  _eanByCode = new Map();
+  if (!window._eanMap) return;
+  for (const [ean, code] of window._eanMap) {
+    if (!_eanByCode.has(code)) _eanByCode.set(code, ean);
+  }
+}
+// Cache _catalogArticle results to avoid recreating objects
+const _catalogCache = new Map();
+
 let DATA_SOURCE = 'loading'; // 'loading' | 'mock' | 'idb'
 let CATALOGUE = null; // catalogue-marques.json brut {M,F,S,A,E,R}
 
@@ -261,11 +273,14 @@ function _catalogHas(code) {
 
 function _catalogArticle(code) {
   const c = _normCode(code);
+  if (!c) return null;
+  const cached = _catalogCache.get(c);
+  if (cached !== undefined) return cached;
   const entry = CATALOGUE?.A?.[c];
-  if (!entry) return null;
+  if (!entry) { _catalogCache.set(c, null); return null; }
   const fam = CATALOGUE.F?.[entry[1]];
   const famLabel = fam ? [fam[1], fam[3]].filter(Boolean).join(' › ') : 'Catalogue Legallais';
-  return {
+  const result = {
     code: c,
     lib: entry[2] || '—',
     marque: CATALOGUE.M?.[entry[0]] || '',
@@ -287,6 +302,8 @@ function _catalogArticle(code) {
     secondary: [],
     catalogOnly: true,
   };
+  _catalogCache.set(c, result);
+  return result;
 }
 
 // ── Associations EAN custom ─────────────────────────────────
@@ -331,6 +348,7 @@ function hydrateFromIDB() {
       if (eanData && typeof eanData === 'object') {
         window._eanMap = new Map(Object.entries(eanData));
         console.log('[Prisme] EAN map · ' + window._eanMap.size + ' entrées');
+        _rebuildEanByCode();
       }
       const hasLive = current?.finalData?.length > 0;
       // Si session PRISME live → la préférer
@@ -377,6 +395,7 @@ function _fetchScanJson() {
       if (data?.ean && typeof data.ean === 'object') {
         window._eanMap = new Map(Object.entries(data.ean));
         console.log('[Prisme] EAN map JSON · ' + window._eanMap.size + ' entrées');
+        _rebuildEanByCode();
       }
       ARTICLES = loadEngineData(rows); _rebuildArtIndex();
       DATA_SOURCE = 'json';
@@ -1415,7 +1434,7 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, onNext
           </button>
           {detailsOpen && (
             <div style={{padding:'8px 10px',color:T.t2,fontSize:11,lineHeight:1.8,background:'#0a0c10',borderRadius:'0 0 10px 10px',marginTop:-2}}>
-              <div><span style={{color:T.t3}}>Code-barre</span> <strong style={{color:T.t1}}>{(()=>{ if (!window._eanMap) return '—'; for (const [ean,c] of window._eanMap) { if (c===a.code) return ean; } return '—'; })()}</strong></div>
+              <div><span style={{color:T.t3}}>Code-barre</span> <strong style={{color:T.t1}}>{_eanByCode.get(a.code) || '—'}</strong></div>
               {getCustomEansForCode(a.code).length > 0 && (
                 <div style={{marginTop:2,marginBottom:2}}>
                   <span style={{color:T.t3}}>Associations</span>
@@ -1739,7 +1758,10 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     if (haptic) _beep();
   };
 
-  // Boucle de scan caméra
+  // Boucle de scan caméra — pipeline en 3 étages pour max perf
+  // Stage 1 (frames 0-5)  : ZBar seul sur crop brut, pas de preprocessing → ultra rapide
+  // Stage 2 (frames 5-12) : ZBar + ZXing sur crop brut, pas de preprocessing
+  // Stage 3 (frames 12+)  : full pipeline (Sobel + upscale + contrast + sharpen + ZBar + ZXing)
   const scanLoop = async () => {
     const video = videoRef.current;
     if (!video || !streamRef.current) return;
@@ -1771,85 +1793,100 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     canvas.width = cw; canvas.height = ch;
     ctx.drawImage(video, cx, sy, cw, ch, 0, 0, cw, ch);
 
-    // Détection de flou (Sobel optimisé, canal vert, échantillonné 1/2) — skip frames floues
-    const raw = ctx.getImageData(0, 0, cw, ch).data;
-    let edgeSum = 0, edgeCnt = 0;
-    const stride = cw * 4;
-    for (let y = 1; y < ch - 1; y += 2) {
-      for (let x = 1; x < cw - 1; x += 2) {
-        const i = (y * cw + x) * 4 + 1; // canal vert
-        const gx = (raw[i-stride-4] + (raw[i-4]<<1) + raw[i+stride-4])
-                 - (raw[i-stride+4] + (raw[i+4]<<1) + raw[i+stride+4]);
-        const gy = (raw[i-stride-4] + (raw[i-stride]<<1) + raw[i-stride+4])
-                 - (raw[i+stride-4] + (raw[i+stride]<<1) + raw[i+stride+4]);
-        edgeSum += (gx < 0 ? -gx : gx) + (gy < 0 ? -gy : gy);
-        edgeCnt++;
+    const emptyFrames = emptyFramesRef.current;
+    const stage = emptyFrames < 5 ? 1 : emptyFrames < 12 ? 2 : 3;
+    let imageData;
+
+    if (stage < 3) {
+      // Stage 1-2 : crop brut, pas de preprocessing
+      imageData = ctx.getImageData(0, 0, cw, ch);
+    } else {
+      // Stage 3 : full pipeline — Sobel blur check + upscale + grayscale + contrast + sharpen
+      const raw = ctx.getImageData(0, 0, cw, ch).data;
+      let edgeSum = 0, edgeCnt = 0;
+      const stride = cw * 4;
+      for (let y = 1; y < ch - 1; y += 2) {
+        for (let x = 1; x < cw - 1; x += 2) {
+          const i = (y * cw + x) * 4 + 1;
+          const gx = (raw[i-stride-4] + (raw[i-4]<<1) + raw[i+stride-4])
+                   - (raw[i-stride+4] + (raw[i+4]<<1) + raw[i+stride+4]);
+          const gy = (raw[i-stride-4] + (raw[i-stride]<<1) + raw[i-stride+4])
+                   - (raw[i+stride-4] + (raw[i+stride]<<1) + raw[i+stride+4]);
+          edgeSum += (gx < 0 ? -gx : gx) + (gy < 0 ? -gy : gy);
+          edgeCnt++;
+        }
       }
-    }
-    if (edgeCnt > 0 && (edgeSum / edgeCnt) < 85) { scanTimer.current = setTimeout(scanLoop, 40); return; }
+      if (edgeCnt > 0 && (edgeSum / edgeCnt) < 85) { scanTimer.current = setTimeout(scanLoop, 40); return; }
 
-    // Mode agressif : après ~3s sans détection (38 frames à 80ms), on pousse le traitement
-    const aggressive = emptyFramesRef.current > 38;
-    const UPS = aggressive ? 2.0 : 1.5;
-    const CONTRAST = aggressive ? 2.0 : 1.6;
-    const SHARPEN = aggressive ? 1.5 : 1.0;
+      const aggressive = emptyFrames > 38;
+      const UPS = aggressive ? 2.0 : 1.5;
+      const CONTRAST = aggressive ? 2.0 : 1.6;
+      const SHARPEN = aggressive ? 1.5 : 1.0;
 
-    // Pre-processing : upscale → grayscale → contraste → sharpen
-    const uw = Math.round(cw * UPS), uh = Math.round(ch * UPS);
-    let upCanvas = canvasRef._upCanvas;
-    if (!upCanvas || upCanvas.width !== uw || upCanvas.height !== uh) {
-      upCanvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(uw, uh) : document.createElement('canvas');
-      upCanvas.width = uw; upCanvas.height = uh;
-      canvasRef._upCanvas = upCanvas;
-      canvasRef._upCtx = upCanvas.getContext('2d', { willReadFrequently: true });
-    }
-    const uctx = canvasRef._upCtx;
-    uctx.imageSmoothingEnabled = true;
-    uctx.imageSmoothingQuality = 'high';
-    uctx.drawImage(canvas, 0, 0, uw, uh);
-    const imageData = uctx.getImageData(0, 0, uw, uh);
+      const uw = Math.round(cw * UPS), uh = Math.round(ch * UPS);
+      let upCanvas = canvasRef._upCanvas;
+      if (!upCanvas || upCanvas.width !== uw || upCanvas.height !== uh) {
+        upCanvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(uw, uh) : document.createElement('canvas');
+        upCanvas.width = uw; upCanvas.height = uh;
+        canvasRef._upCanvas = upCanvas;
+        canvasRef._upCtx = upCanvas.getContext('2d', { willReadFrequently: true });
+      }
+      const uctx = canvasRef._upCtx;
+      uctx.imageSmoothingEnabled = true;
+      uctx.imageSmoothingQuality = 'high';
+      uctx.drawImage(canvas, 0, 0, uw, uh);
+      imageData = uctx.getImageData(0, 0, uw, uh);
 
-    const d = imageData.data;
-    // 1) Grayscale + contraste
-    for (let i = 0; i < d.length; i += 4) {
-      let g = (d[i] * 77 + d[i+1] * 150 + d[i+2] * 29) >> 8;
-      g = ((g - 128) * CONTRAST + 128) | 0;
-      d[i] = d[i+1] = d[i+2] = g < 0 ? 0 : g > 255 ? 255 : g;
-    }
-    // 2) Sharpen (unsharp mask, buffer réutilisé)
-    const needSize = d.length;
-    if (!sharpenBufRef.current || sharpenBufRef.current.length < needSize) {
-      sharpenBufRef.current = new Uint8ClampedArray(needSize);
-    }
-    const tmp = sharpenBufRef.current;
-    tmp.set(d);
-    const w4 = uw * 4;
-    for (let y = 1; y < uh - 1; y++) {
-      for (let x = 1; x < uw - 1; x++) {
-        const i = (y * uw + x) * 4;
-        const v = tmp[i] + ((tmp[i] - (tmp[i-4] + tmp[i+4] + tmp[i-w4] + tmp[i+w4]) / 4) * SHARPEN) | 0;
-        d[i] = d[i+1] = d[i+2] = v < 0 ? 0 : v > 255 ? 255 : v;
+      const d = imageData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        let g = (d[i] * 77 + d[i+1] * 150 + d[i+2] * 29) >> 8;
+        g = ((g - 128) * CONTRAST + 128) | 0;
+        d[i] = d[i+1] = d[i+2] = g < 0 ? 0 : g > 255 ? 255 : g;
+      }
+      const needSize = d.length;
+      if (!sharpenBufRef.current || sharpenBufRef.current.length < needSize) {
+        sharpenBufRef.current = new Uint8ClampedArray(needSize);
+      }
+      const tmp = sharpenBufRef.current;
+      tmp.set(d);
+      const w4 = uw * 4;
+      for (let y = 1; y < uh - 1; y++) {
+        for (let x = 1; x < uw - 1; x++) {
+          const i = (y * uw + x) * 4;
+          const v = tmp[i] + ((tmp[i] - (tmp[i-4] + tmp[i+4] + tmp[i-w4] + tmp[i+w4]) / 4) * SHARPEN) | 0;
+          d[i] = d[i+1] = d[i+2] = v < 0 ? 0 : v > 255 ? 255 : v;
+        }
       }
     }
 
     try {
       const hasZbar = typeof zbarWasm !== 'undefined';
-      const zxingP = (typeof ZXingWASM !== 'undefined')
-        ? ZXingWASM.readBarcodes(imageData, {
-            tryHarder: true,
-            tryInvert: true,
-            formats: ['EAN-13', 'EAN-8', 'Code128', 'Code39'],
-            maxNumberOfSymbols: 4,
-          }).then(res => res.map(r => ({ text: r.text, format: r.format })))
-        : Promise.resolve([]);
 
-      const zbarP = hasZbar
+      // Stage 1 : ZBar seul (ultra-rapide) ; Stage 2-3 : ZBar + ZXing
+      let zbarP, zxingP;
+
+      zbarP = hasZbar
         ? zbarWasm.scanImageData(imageData).then(symbols =>
             symbols.map(s => ({ text: s.decode(), format: 'ZBar-' + s.typeName }))
           ).catch(() => [])
         : Promise.resolve([]);
 
-      const [zxingRes, zbarRes] = await Promise.all([zxingP, zbarP]);
+      if (stage === 1) {
+        // Stage 1 : ZBar seul, pas de ZXing
+        zxingP = Promise.resolve([]);
+      } else {
+        // Stage 2-3 : ZXing en parallèle (tryHarder seulement en stage 3)
+        zxingP = (typeof ZXingWASM !== 'undefined')
+          ? ZXingWASM.readBarcodes(imageData, {
+              tryHarder: stage >= 3,
+              tryInvert: stage >= 3,
+              formats: ['EAN-13', 'EAN-8', 'Code128', 'Code39'],
+              maxNumberOfSymbols: 4,
+            }).then(res => res.map(r => ({ text: r.text, format: r.format })))
+          : Promise.resolve([]);
+      }
+
+      const [zbarRes, zxingRes] = await Promise.all([zbarP, zxingP]);
       const seen = new Set();
       const merged = [];
       for (const r of [...zbarRes, ...zxingRes]) {
@@ -1857,7 +1894,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         seen.add(r.text);
         merged.push(r);
       }
-      // Compteur frames vides pour escalade mode agressif
+      // Compteur frames vides pour escalade d'étage
       if (merged.length === 0) { emptyFramesRef.current++; }
       else { emptyFramesRef.current = 0; }
 
@@ -1909,7 +1946,8 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
       console.warn('[Scan] erreur:', e);
     }
 
-    scanTimer.current = setTimeout(scanLoop, 80); // ~12 fps
+    // Stage 1 : 50ms (~20fps), Stage 2 : 65ms (~15fps), Stage 3 : 80ms (~12fps)
+    scanTimer.current = setTimeout(scanLoop, stage === 1 ? 50 : stage === 2 ? 65 : 80);
   };
 
   // Démarrer la caméra au montage
@@ -2007,7 +2045,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         {/* Zoom toggle */}
         {zoomMax > 1 && (
           <button onClick={()=>{
-            const next = zoomLevel > 1 ? 1 : Math.min(2, zoomMax);
+            const next = zoomLevel >= 4 ? 1.5 : zoomLevel >= 2 ? Math.min(4, zoomMax) : Math.min(2, zoomMax);
             try { streamRef.current?.getVideoTracks()[0].applyConstraints({ advanced: [{ zoom: next }] }); } catch(e){}
             setZoomLevel(next);
           }} style={{position:'absolute',top:14,left:62,height:38,padding:'0 12px',borderRadius:99,background:zoomLevel>1?'rgba(251,146,60,.9)':'rgba(0,0,0,.6)',border:'none',color:zoomLevel>1?'#1a0e05':'rgba(255,255,255,.7)',fontSize:12,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
