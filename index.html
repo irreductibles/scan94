@@ -1526,7 +1526,8 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const scanTimer = useRef(null);
   const scanPassRef = useRef(0);
   const lastCodesRef = useRef(new Map()); // Map<barcode, ts> anti-doublon brut
-  const directBufRef = useRef(null); // buffer mode direct : {barcode, timer}
+  const directBufRef = useRef(null); // buffer mode direct : {barcode, artCode, timer}
+  const DIRECT_SCAN_SETTLE_MS = 300;
 
   // Résoudre un code-barre scanné → code article PRISME
   const resolveBarcode = (barcode) => {
@@ -1643,10 +1644,12 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         // Ignorer codes courts non résolus (lectures partielles)
         if (!artCode && barcode.length < 8) continue;
         if (!continu) {
-          // Mode direct : bufferiser 300ms, garder le code le plus long
+          // Mode direct : attendre brièvement les autres passes, puis choisir le meilleur candidat.
           const buf = directBufRef.current;
-          if (!buf || barcode.length > buf.barcode.length) {
-            if (buf) clearTimeout(buf.timer);
+          const shouldReplace = !buf
+            || (artCode && !buf.artCode)
+            || (barcode.length > buf.barcode.length);
+          if (!buf) {
             const timer = setTimeout(() => {
               const best = directBufRef.current;
               directBufRef.current = null;
@@ -1654,11 +1657,13 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
               if (best.artCode) {
                 if (navigator.vibrate) try { navigator.vibrate(15); } catch(e){}
                 onPick(best.artCode);
-              } else if (onUnknown) {
+              } else if (best.barcode.length >= 8 && onUnknown) {
                 onUnknown(best.barcode);
               }
-            }, 300);
+            }, DIRECT_SCAN_SETTLE_MS);
             directBufRef.current = { barcode, artCode, timer };
+          } else if (shouldReplace) {
+            directBufRef.current = { ...buf, barcode, artCode };
           }
           continue;
         }
@@ -1696,6 +1701,8 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     return () => {
       cancelled = true;
       if (scanTimer.current) clearTimeout(scanTimer.current);
+      if (directBufRef.current?.timer) clearTimeout(directBufRef.current.timer);
+      directBufRef.current = null;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop());
         streamRef.current = null;
