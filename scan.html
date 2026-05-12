@@ -1627,6 +1627,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const [detected, setDetected] = useState([]); // [{...article, count, lastTs, firstTs}]
   const [flash, setFlash] = useState(0); // increment to trigger flash
   const [dupNotice, setDupNotice] = useState(null);
+  const [unknownNotice, setUnknownNotice] = useState(null); // barcode EAN non résolu
   const [batchOpen, setBatchOpen] = useState(false);
 
   const videoRef = useRef(null);
@@ -1778,6 +1779,9 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         }
         if (artCode) {
           tryAdd(artCode, barcode);
+        } else if (barcode.length >= 8) {
+          setUnknownNotice(barcode);
+          if (haptic && navigator.vibrate) { try { navigator.vibrate([30,50,30]); } catch(e){} }
         }
       }
     } catch (e) {
@@ -1879,6 +1883,13 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         )}
         {dupNotice && (
           <div className="pop" style={{position:'absolute',top:60,left:'50%',transform:'translateX(-50%)',padding:'8px 14px',background:'rgba(251,191,36,.95)',color:'#1a0e05',borderRadius:99,fontSize:11,fontWeight:800,whiteSpace:'nowrap'}}>↻ Déjà scanné · {dupNotice.code}</div>
+        )}
+        {unknownNotice && (
+          <div className="pop" style={{position:'absolute',top:60,left:'50%',transform:'translateX(-50%)',display:'flex',alignItems:'center',gap:8,padding:'8px 14px',background:'rgba(239,68,68,.95)',color:'#fff',borderRadius:99,fontSize:11,fontWeight:800,whiteSpace:'nowrap'}}>
+            <span>? {unknownNotice}</span>
+            <button onClick={()=>{ setUnknownNotice(null); onUnknown && onUnknown(unknownNotice); }} style={{background:'#fff',color:'#b91c1c',border:'none',borderRadius:99,padding:'3px 10px',fontSize:10,fontWeight:900,cursor:'pointer'}}>Associer</button>
+            <button onClick={()=>setUnknownNotice(null)} style={{background:'none',border:'none',color:'rgba(255,255,255,.7)',fontSize:14,fontWeight:800,cursor:'pointer',padding:'0 2px'}}>✕</button>
+          </div>
         )}
 
         {/* hint */}
