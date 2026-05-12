@@ -1693,6 +1693,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const scanPassRef = useRef(0);
   const lastCodesRef = useRef(new Map()); // Map<barcode, ts> anti-doublon brut
   const directBufRef = useRef(null); // buffer mode direct : {barcode, artCode, timer}
+  const emptyFramesRef = useRef(0); // compteur frames sans détection (mode agressif)
   const DIRECT_SCAN_SETTLE_MS = 120;
 
   // Résoudre un code-barre scanné → code article PRISME
@@ -1769,8 +1770,13 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     canvas.width = cw; canvas.height = ch;
     ctx.drawImage(video, cx, sy, cw, ch, 0, 0, cw, ch);
 
-    // Pre-processing : upscale ×1.5 → grayscale → contraste → sharpen
-    const UPS = 1.5;
+    // Mode agressif : après ~3s sans détection (38 frames à 80ms), on pousse le traitement
+    const aggressive = emptyFramesRef.current > 38;
+    const UPS = aggressive ? 2.0 : 1.5;
+    const CONTRAST = aggressive ? 2.0 : 1.6;
+    const SHARPEN = aggressive ? 1.5 : 1.0;
+
+    // Pre-processing : upscale → grayscale → contraste → sharpen
     const uw = Math.round(cw * UPS), uh = Math.round(ch * UPS);
     let upCanvas = canvasRef._upCanvas;
     if (!upCanvas || upCanvas.width !== uw || upCanvas.height !== uh) {
@@ -1786,19 +1792,19 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     const imageData = uctx.getImageData(0, 0, uw, uh);
 
     const d = imageData.data;
-    // 1) Grayscale + contraste ×1.6
+    // 1) Grayscale + contraste
     for (let i = 0; i < d.length; i += 4) {
       let g = (d[i] * 77 + d[i+1] * 150 + d[i+2] * 29) >> 8;
-      g = ((g - 128) * 1.6 + 128) | 0;
+      g = ((g - 128) * CONTRAST + 128) | 0;
       d[i] = d[i+1] = d[i+2] = g < 0 ? 0 : g > 255 ? 255 : g;
     }
-    // 2) Sharpen (unsharp mask, coeff 1.0)
+    // 2) Sharpen (unsharp mask)
     const tmp = new Uint8ClampedArray(d);
     const w4 = uw * 4;
     for (let y = 1; y < uh - 1; y++) {
       for (let x = 1; x < uw - 1; x++) {
         const i = (y * uw + x) * 4;
-        const v = tmp[i] + ((tmp[i] - (tmp[i-4] + tmp[i+4] + tmp[i-w4] + tmp[i+w4]) / 4) * 1.0) | 0;
+        const v = tmp[i] + ((tmp[i] - (tmp[i-4] + tmp[i+4] + tmp[i-w4] + tmp[i+w4]) / 4) * SHARPEN) | 0;
         d[i] = d[i+1] = d[i+2] = v < 0 ? 0 : v > 255 ? 255 : v;
       }
     }
@@ -1828,6 +1834,9 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         seen.add(r.text);
         merged.push(r);
       }
+      // Compteur frames vides pour escalade mode agressif
+      if (merged.length === 0) { emptyFramesRef.current++; }
+      else { emptyFramesRef.current = 0; }
 
       const now = Date.now();
       for (const r of merged) {
