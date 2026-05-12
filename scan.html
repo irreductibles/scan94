@@ -1812,6 +1812,11 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
 
   // Démarrer la caméra au montage
   useEffect(() => {
+    // Débloquer AudioContext iOS dès le montage (dans la call stack du tap utilisateur)
+    try {
+      if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (_audioCtx.state === 'suspended') _audioCtx.resume();
+    } catch(e){}
     let cancelled = false;
     (async () => {
       try {
@@ -1988,8 +1993,12 @@ function DouchetteScreen({ onBack, onArticle }) {
   const inputRef = useRef(null);
   const lastKeyRef = useRef(0);
 
-  // Refocus hidden input aggressively (Zebra scanner sends keystrokes)
+  // Débloquer AudioContext iOS + refocus hidden input
   useEffect(() => {
+    try {
+      if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (_audioCtx.state === 'suspended') _audioCtx.resume();
+    } catch(e){}
     const f = () => inputRef.current?.focus();
     f();
     const id = setInterval(f, 600);
