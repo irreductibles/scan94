@@ -1526,6 +1526,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const scanTimer = useRef(null);
   const scanPassRef = useRef(0);
   const lastCodesRef = useRef(new Map()); // Map<barcode, ts> anti-doublon brut
+  const lastEanTsRef = useRef(0); // timestamp du dernier EAN 8+ chiffres détecté
 
   // Résoudre un code-barre scanné → code article PRISME
   const resolveBarcode = (barcode) => {
@@ -1630,11 +1631,12 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
       // Prioriser EAN (13/8 chiffres) vs Code128/Code39 (lectures partielles)
       const hasEan = merged.some(r => /^\d{8}$|^\d{13}$/.test(r.text));
       const now = Date.now();
+      if (hasEan) lastEanTsRef.current = now;
       for (const r of merged) {
         const barcode = r.text;
         if (!/^\d{5,13}$/.test(barcode)) continue;
-        // Si un EAN complet est détecté, ignorer les codes courts (lectures partielles)
-        if (hasEan && barcode.length < 8) continue;
+        // Ignorer codes courts si un EAN a été vu dans cette frame ou dans les 3 dernières secondes
+        if (barcode.length < 8 && (hasEan || (now - lastEanTsRef.current < 3000))) continue;
         // Anti-doublon brut 2s sur le code-barre brut
         const prev = lastCodesRef.current.get(barcode);
         if (prev && now - prev < 2000) continue;
