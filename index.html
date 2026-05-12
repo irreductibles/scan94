@@ -1627,7 +1627,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const scanPassRef = useRef(0);
   const lastCodesRef = useRef(new Map()); // Map<barcode, ts> anti-doublon brut
   const directBufRef = useRef(null); // buffer mode direct : {barcode, artCode, timer}
-  const DIRECT_SCAN_SETTLE_MS = 300;
+  const DIRECT_SCAN_SETTLE_MS = 120;
 
   // Résoudre un code-barre scanné → code article PRISME
   const resolveBarcode = (barcode) => {
