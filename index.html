@@ -1637,6 +1637,8 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         seen.add(r.text);
         merged.push(r);
       }
+      // Trier par longueur décroissante — EAN-13 avant codes courts
+      merged.sort((a, b) => b.text.length - a.text.length);
 
       // Prioriser EAN (13/8 chiffres) vs Code128/Code39 (lectures partielles)
       const hasEan = merged.some(r => /^\d{8}$|^\d{13}$/.test(r.text));
