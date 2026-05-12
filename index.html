@@ -1627,10 +1627,14 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         merged.push(r);
       }
 
+      // Prioriser EAN (13/8 chiffres) vs Code128/Code39 (lectures partielles)
+      const hasEan = merged.some(r => /^\d{8}$|^\d{13}$/.test(r.text));
       const now = Date.now();
       for (const r of merged) {
         const barcode = r.text;
         if (!/^\d{5,13}$/.test(barcode)) continue;
+        // Si un EAN complet est détecté, ignorer les codes courts (lectures partielles)
+        if (hasEan && barcode.length < 8) continue;
         // Anti-doublon brut 2s sur le code-barre brut
         const prev = lastCodesRef.current.get(barcode);
         if (prev && now - prev < 2000) continue;
@@ -1640,14 +1644,14 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         const artCode = resolveBarcode(barcode);
         if (artCode) {
           if (!continu) {
-            // Mode direct : 1 scan → fiche immédiate
             if (navigator.vibrate) try { navigator.vibrate(15); } catch(e){}
             onPick(artCode);
-            return; // stop scan loop
+            return;
           }
           tryAdd(artCode, barcode);
-        } else {
-          // Code inconnu → notifier le parent (mode direct seulement)
+        } else if (barcode.length >= 8) {
+          // Code inconnu (EAN 8/13 chiffres) → proposer association
+          // Codes courts (5-7) ignorés : lectures partielles caméra
           if (!continu && onUnknown) { onUnknown(barcode); return; }
         }
       }
