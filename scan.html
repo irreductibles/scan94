@@ -1963,10 +1963,14 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         });
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
-        // Zoom natif si supporté
+        // Autofocus continu + zoom natif
         try {
           const track = stream.getVideoTracks()[0];
           const caps = track.getCapabilities?.();
+          // Forcer autofocus continu si supporté
+          if (caps?.focusMode?.includes('continuous')) {
+            await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+          }
           if (caps?.zoom) {
             setZoomMax(caps.zoom.max);
             const z = Math.min(1.5, caps.zoom.max);
