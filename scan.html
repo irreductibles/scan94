@@ -1662,8 +1662,8 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   // Résoudre un code-barre scanné → code article PRISME
   const resolveBarcode = (barcode) => {
     const clean = barcode.replace(/\D/g, '');
-    // 1) Code article direct (6 chiffres)
-    let a = _artByCode.get(clean);
+    // 1) Code article direct (5-6 chiffres)
+    let a = _artByCode.get(clean) || _artByCode.get(_normCode(clean));
     if (a) return a.code;
     // 2) Ref fournisseur
     a = _artByRef.get(barcode) || _artByRef.get(barcode.toUpperCase());
@@ -1761,7 +1761,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
 
       const now = Date.now();
       for (const r of merged) {
-        const barcode = r.text;
+        const barcode = r.text.replace(/\s/g, '');
         if (!/^\d{5,13}$/.test(barcode)) continue;
         // Anti-doublon brut 2s sur le code-barre brut
         const prev = lastCodesRef.current.get(barcode);
