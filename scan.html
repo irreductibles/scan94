@@ -1712,13 +1712,14 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const DIRECT_SCAN_SETTLE_MS = 120;
 
   // Résoudre un code-barre scanné → code article PRISME
-  const resolveBarcode = (barcode) => {
+  const resolveBarcode = (barcode, rawText) => {
     const clean = barcode.replace(/\D/g, '');
     // 1) Code article direct (5-6 chiffres)
     let a = _artByCode.get(clean) || _artByCode.get(_normCode(clean));
     if (a) return a.code;
-    // 2) Ref fournisseur
+    // 2) Ref fournisseur (avec et sans espaces)
     a = _artByRef.get(barcode) || _artByRef.get(barcode.toUpperCase());
+    if (!a && rawText && rawText !== barcode) a = _artByRef.get(rawText) || _artByRef.get(rawText.toUpperCase());
     if (a) return a.code;
     // 3) Custom EAN (associations terrain)
     const custom = _customEanMap.get(clean);
@@ -1829,17 +1830,16 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
 
       const now = Date.now();
       for (const r of merged) {
-        const barcode = r.text.replace(/\s/g, '');
-        if (!/^\d{5,13}$/.test(barcode)) continue;
+        const rawText = r.text.trim();
+        const barcode = rawText.replace(/\s/g, '');
+        if (!barcode) continue;
         // Anti-doublon brut 2s sur le code-barre brut
         const prev = lastCodesRef.current.get(barcode);
         if (prev && now - prev < 2000) continue;
         lastCodesRef.current.set(barcode, now);
 
         // Résoudre vers un article PRISME
-        const artCode = resolveBarcode(barcode);
-        // Ignorer codes courts non résolus (lectures partielles)
-        if (!artCode && barcode.length < 8) continue;
+        const artCode = resolveBarcode(barcode, rawText);
         if (!continu) {
           // Mode direct : attendre brièvement les autres passes, puis choisir le meilleur candidat.
           const buf = directBufRef.current;
