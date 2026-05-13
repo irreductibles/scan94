@@ -1851,7 +1851,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
       for (const p of paragraphs) {
         const text = (p.text || '').replace(/\s/g, '');
         if (!text) continue;
-        const matches = text.match(/\d{13}|\d{8}|\d{5,6}/g) || [];
+        const matches = text.match(/(?<!\d)\d{13}(?!\d)|(?<!\d)\d{5,6}(?!\d)/g) || [];
         for (const m of matches) ocrResults.push({ text: m, format: 'OCR' });
       }
       return ocrResults;
