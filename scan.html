@@ -1854,7 +1854,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
               if (best.artCode) {
                 _beep();
                 onPick(best.artCode);
-              } else if (best.barcode.length >= 8 && onUnknown) {
+              } else if (onUnknown) {
                 onUnknown(best.barcode);
               }
             }, DIRECT_SCAN_SETTLE_MS);
@@ -1866,7 +1866,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
         }
         if (artCode) {
           tryAdd(artCode, barcode);
-        } else if (barcode.length >= 8) {
+        } else {
           setUnknownNotice(barcode);
           if (haptic) _beepError();
         }
