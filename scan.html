@@ -62,6 +62,7 @@
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.0.3/dist/iife/reader/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@undecaf/zbar-wasm@0.11.0/dist/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js" onerror="window._ortFailed=true"></script>
 </head>
 <body>
 <div id="stage">
@@ -1709,6 +1710,13 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
   const lastCodesRef = useRef(new Map()); // Map<barcode, ts> anti-doublon brut
   const directBufRef = useRef(null); // buffer mode direct : {barcode, artCode, timer}
   const emptyFramesRef = useRef(0); // compteur frames sans détection
+  const ocrReadyRef = useRef(false);
+  const ocrLoadingRef = useRef(false);
+  const ocrBusyRef = useRef(false);
+  const lastOcrTimeRef = useRef(0);
+  const paddleOcrRef = useRef(null);
+  const hdCanvasRef = useRef(null);
+  const OCR_COOLDOWN = 2000;
   const DIRECT_SCAN_SETTLE_MS = 120;
 
   // Résoudre un code-barre scanné → code article PRISME
@@ -1754,10 +1762,93 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     if (haptic) _beep();
   };
 
-  // Boucle de scan caméra — 2 moteurs, zéro preprocessing
-  // Stage 1 (0-5 frames)  : ZXing seul (5ms)
+  // ── PaddleOCR lazy-load ──
+  const loadOpenCV = () => new Promise((resolve, reject) => {
+    if (typeof cv !== 'undefined' && cv.Mat) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://docs.opencv.org/4.8.0/opencv.js';
+    s.async = true;
+    s.onload = () => {
+      const check = () => {
+        if (typeof cv !== 'undefined' && cv.Mat) resolve();
+        else setTimeout(check, 100);
+      };
+      check();
+    };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+
+  const initOCR = async () => {
+    if (ocrReadyRef.current || ocrLoadingRef.current) return;
+    if (window._ortFailed || typeof ort === 'undefined') { console.warn('[OCR] ONNX Runtime unavailable'); return; }
+    ocrLoadingRef.current = true;
+    try {
+      console.log('[OCR] Loading OpenCV.js...');
+      const timeout = ms => new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms));
+      await Promise.race([loadOpenCV(), timeout(15000)]);
+      console.log('[OCR] OpenCV ready, loading PaddleOCR models...');
+      const Paddle = await Promise.race([
+        import('https://cdn.jsdelivr.net/npm/esearch-ocr@5.1.5/dist/esearch-ocr.js'),
+        timeout(15000)
+      ]);
+      const assetsPath = 'https://cdn.jsdelivr.net/npm/paddleocr-browser/dist/';
+      const dicRes = await fetch(assetsPath + 'ppocr_keys_v1.txt');
+      const dic = await dicRes.text();
+      await Promise.race([
+        Paddle.init({ detPath: assetsPath + 'ppocr_det.onnx', recPath: assetsPath + 'ppocr_rec.onnx', dic, ort, node: false, cv }),
+        timeout(30000)
+      ]);
+      paddleOcrRef.current = Paddle;
+      ocrReadyRef.current = true;
+      ocrLoadingRef.current = false;
+      console.log('[OCR] PaddleOCR ready');
+    } catch(e) {
+      console.warn('[OCR] load error:', e);
+      // keep ocrLoadingRef=true to prevent retry
+    }
+  };
+
+  const runOCR = async () => {
+    if (ocrBusyRef.current || !ocrReadyRef.current) return [];
+    const now = Date.now();
+    if (now - lastOcrTimeRef.current < OCR_COOLDOWN) return [];
+    ocrBusyRef.current = true;
+    lastOcrTimeRef.current = now;
+    try {
+      const video = videoRef.current;
+      const vw = video.videoWidth, vh = video.videoHeight;
+      if (!hdCanvasRef.current) hdCanvasRef.current = document.createElement('canvas');
+      const hdc = hdCanvasRef.current;
+      const hdctx = hdc.getContext('2d');
+      hdc.width = vw; hdc.height = vh;
+      hdctx.drawImage(video, 0, 0, vw, vh);
+      const dataURL = hdc.toDataURL('image/jpeg', 0.92);
+      const t0 = performance.now();
+      const result = await paddleOcrRef.current.ocr(dataURL);
+      console.log('[OCR]', Math.round(performance.now() - t0) + 'ms');
+      const ocrResults = [];
+      const paragraphs = result?.parragraphs || result?.paragraphs || [];
+      for (const p of paragraphs) {
+        const text = (p.text || '').replace(/\s/g, '');
+        if (!text) continue;
+        const matches = text.match(/\d{13}|\d{8}|\d{5,6}/g) || [];
+        for (const m of matches) ocrResults.push({ text: m, format: 'OCR' });
+      }
+      return ocrResults;
+    } catch(e) {
+      console.warn('[OCR] error:', e);
+      return [];
+    } finally {
+      ocrBusyRef.current = false;
+    }
+  };
+
+  // Boucle de scan caméra — 3 moteurs + OCR fallback
+  // Stage 1 (0-5 frames)  : ZXing + ZBar
   // Stage 2 (5-12 frames) : ZXing + ZBar
   // Stage 3 (12+ frames)  : ZXing tryHarder + ZBar
+  // Stage 4 (20+ frames)  : + PaddleOCR snapshot HD
   const scanLoop = async () => {
     const video = videoRef.current;
     if (!video || !streamRef.current) return;
@@ -1827,6 +1918,18 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
       // Compteur frames vides pour escalade d'étage
       if (merged.length === 0) { emptyFramesRef.current++; }
       else { emptyFramesRef.current = 0; }
+
+      // Stage 4 — PaddleOCR fallback (lazy-load + snapshot HD)
+      const ef = emptyFramesRef.current;
+      if (ef >= 15 && !ocrReadyRef.current && !ocrLoadingRef.current) initOCR();
+      if (ef >= 20 && ocrReadyRef.current && !ocrBusyRef.current && merged.length === 0) {
+        const ocrRes = await runOCR();
+        for (const r of ocrRes) {
+          if (!r.text || seen.has(r.text)) continue;
+          seen.add(r.text);
+          merged.push(r);
+        }
+      }
 
       const now = Date.now();
       for (const r of merged) {
