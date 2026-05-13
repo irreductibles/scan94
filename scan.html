@@ -1896,9 +1896,9 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     const cw = side, ch = side;
     const imageData = ctx.getImageData(0, 0, cw, ch);
 
-    const emptyFrames = emptyFramesRef.current;
-    // Reset après 40 frames vides pour ne pas rester bloqué
-    if (emptyFrames >= 40) emptyFramesRef.current = 0;
+    let emptyFrames = emptyFramesRef.current;
+    // Reset après 60 frames vides → relance le cycle OCR
+    if (emptyFrames >= 60) { emptyFramesRef.current = 20; emptyFrames = 20; }
 
     try {
       const hasZxing = typeof ZXingWASM !== 'undefined';
@@ -1934,7 +1934,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
 
       // Stage 4 — PaddleOCR fallback (lazy-load + snapshot HD)
       const ef = emptyFramesRef.current;
-      if (ef >= 15 && !ocrReadyRef.current && !ocrLoadingRef.current) initOCR();
+      if (ef >= 15 && !ocrReadyRef.current && !ocrLoadingRef.current) { console.log('[Scan] OCR init triggered at frame', ef); initOCR(); }
       if (ef >= 20 && ocrReadyRef.current && !ocrBusyRef.current && merged.length === 0) {
         const ocrRes = await runOCR();
         for (const r of ocrRes) {
