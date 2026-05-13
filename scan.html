@@ -1490,18 +1490,27 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, onNext
         {!invMode && (() => {
           const erpAction = (a.secondary||[]).find(s=>!addedActions.some(x=>x.kind===s.kind));
           if (erpAction) return (
-            <button onClick={onActions} style={{
-              width:'100%',marginTop:12,padding:'12px 14px',borderRadius:14,border:'none',
-              background:'#eab308',color:'#0a0c10',textAlign:'left',
-              display:'flex',alignItems:'center',gap:12,
-            }}>
-              <div style={{width:40,height:40,borderRadius:10,background:'rgba(0,0,0,.18)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:16,fontWeight:800}}>ERP</div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:800}}>{erpAction.label}</div>
-                <div style={{fontSize:11,opacity:.75,marginTop:1}}>{erpAction.sub}</div>
-              </div>
-              <Ico d={ICONS.fwd} s={18} sw={2.5} />
-            </button>
+            <>
+              <button onClick={()=>onAddAction(erpAction.kind, `${erpAction.label} (${erpAction.sub})`, 'ERP central', '≤ 5 min')} style={{
+                width:'100%',marginTop:12,padding:'12px 14px',borderRadius:14,border:'none',
+                background:'#eab308',color:'#0a0c10',textAlign:'left',
+                display:'flex',alignItems:'center',gap:12,
+              }}>
+                <div style={{width:40,height:40,borderRadius:10,background:'rgba(0,0,0,.18)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:16,fontWeight:800}}>ERP</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:800}}>{erpAction.label}</div>
+                  <div style={{fontSize:11,opacity:.75,marginTop:1}}>{erpAction.sub}</div>
+                </div>
+                <Ico d={ICONS.fwd} s={18} sw={2.5} />
+              </button>
+              <button onClick={onActions} style={{
+                width:'100%',marginTop:8,padding:'13px 14px',borderRadius:12,
+                background:T.card,color:T.t1,border:`1px solid ${T.border}`,
+                display:'flex',alignItems:'center',justifyContent:'center',gap:8,fontSize:13,fontWeight:700,
+              }}>
+                <Ico d="<path d='M12 5v14M5 12h14'/>" s={16} sw={2.5} />Ajouter une action
+              </button>
+            </>
           );
           if (addedActions.length === 0) return (
             <button onClick={onActions} style={{
