@@ -1897,17 +1897,16 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     const imageData = ctx.getImageData(0, 0, cw, ch);
 
     const emptyFrames = emptyFramesRef.current;
-    const stage = emptyFrames < 5 ? 1 : emptyFrames < 12 ? 2 : 3;
+    // Reset après 40 frames vides pour ne pas rester bloqué
+    if (emptyFrames >= 40) emptyFramesRef.current = 0;
 
     try {
       const hasZxing = typeof ZXingWASM !== 'undefined';
       const hasZbar = typeof zbarWasm !== 'undefined';
 
-      // ZXing toujours (5ms), tryHarder en stage 3
+      // ZXing (5ms)
       const zxingP = hasZxing
         ? ZXingWASM.readBarcodes(imageData, {
-            tryHarder: stage >= 3,
-            tryInvert: stage >= 3,
             formats: ['EAN-13', 'EAN-8', 'Code128', 'Code39'],
             maxNumberOfSymbols: 4,
           }).then(res => res.map(r => ({ text: r.text, format: r.format })))
@@ -1992,8 +1991,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
       console.warn('[Scan] erreur:', e);
     }
 
-    // Stage 1: 50ms (~20fps), Stage 2: 65ms, Stage 3: 80ms
-    scanTimer.current = setTimeout(scanLoop, [50, 65, 80][stage - 1]);
+    scanTimer.current = setTimeout(scanLoop, 55);
   };
 
   // Démarrer la caméra au montage
