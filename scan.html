@@ -1808,8 +1808,8 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
           .catch(() => [])
         : Promise.resolve([]);
 
-      // ZBar en stage 2+
-      const zbarP = (stage >= 2 && hasZbar)
+      // ZBar toujours (20ms, lit Code128/Code39 mieux que ZXing seul)
+      const zbarP = hasZbar
         ? zbarWasm.scanImageData(imageData).then(symbols =>
             symbols.map(s => ({ text: s.decode(), format: 'ZBar-' + s.typeName }))
           ).catch(() => [])
