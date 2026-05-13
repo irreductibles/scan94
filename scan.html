@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
 <meta name="theme-color" content="#0a0c10" />
 <title>PRISME Scan · prototype C</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -90,6 +90,10 @@ window.addEventListener('unhandledrejection', function(e) {
     + '<pre style="font-size:12px;white-space:pre-wrap;color:#fca5a5">' + (e.reason?.stack || e.reason || 'unknown') + '</pre>'
     + '<button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;background:#60a5fa;color:#000;border:none;border-radius:8px;font-weight:700">Recharger</button></div>';
 });
+</script>
+<script type="module">
+// Loader ESM pour esearch-ocr — hors Babel pour éviter require()
+window._loadPaddleOCR = () => import('https://cdn.jsdelivr.net/npm/esearch-ocr@5.1.5/dist/esearch-ocr.js');
 </script>
 <script type="text/babel">
 const { useState, useEffect, useMemo, useRef } = React;
@@ -1306,7 +1310,7 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, onNext
             <Ico d={ICONS.check} s={48} sw={3} />
           </div>
           <div style={{fontSize:22,fontWeight:900,color:T.t1}}>Tout est OK</div>
-          <div style={{fontSize:20,fontWeight:900,color:T.t1,marginTop:8,letterSpacing:.5}} className="tn">{a.code}</div>
+          <div style={{fontSize:28,fontWeight:900,color:T.t1,marginTop:8,letterSpacing:.5}} className="tn">{a.code}</div>
           <div style={{fontSize:13,color:T.t2,marginTop:4,maxWidth:280,lineHeight:1.4}}>{a.lib}</div>
           <div style={{marginTop:22,padding:'10px 14px',background:T.card,borderRadius:12,border:`1px solid ${T.border}`,display:'grid',gridTemplateColumns:'repeat(4,minmax(48px,1fr))',gap:14}}>
             {[['Stock', a.stock, '#86efac'],['Min', a.min, T.t1],['Max', a.max, T.t1],['Couv.', a.couv+'j', T.t1]].map(([k,val,c])=>(
@@ -1316,6 +1320,7 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, onNext
               </div>
             ))}
           </div>
+          <button onClick={()=>{onAddAction('etiquette','Étiquette manquante','Commande rapide Legallais','À la prochaine impression');}} style={{marginTop:14,padding:'12px 18px',borderRadius:12,border:`1px solid rgba(251,191,36,.35)`,background:'rgba(251,191,36,.12)',color:'#fbbf24',fontSize:13,fontWeight:700,cursor:'pointer',width:'100%',textAlign:'center'}}>Étiquette manquante</button>
         </div>
         <div style={{padding:'10px 14px calc(14px + env(safe-area-inset-bottom))',background:T.bg,borderTop:`1px solid ${T.border}`,display:'flex',gap:8}}>
           <button onClick={()=>setShowDetails(true)} style={{padding:'14px 18px',borderRadius:12,border:`1px solid ${T.border}`,background:T.card,color:T.t1,fontSize:13,fontWeight:700,cursor:'pointer'}}>Détails</button>
@@ -1383,7 +1388,7 @@ function ArticleScreen({ t, code, onBack, onActions, onAddAction, onScan, onNext
         {/* Cartouche article — toujours visible (compact si action-first) */}
         <div className="pop" style={{background:T.card,borderRadius:16,border:`1px solid ${T.border}`,padding:'12px 14px',position:'relative',overflow:'hidden'}}>
           <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <span style={{fontSize:11,color:T.t2,fontWeight:700,letterSpacing:.6}} className="tn">{a.code}</span>
+            <span style={{fontSize:16,color:T.t1,fontWeight:900,letterSpacing:.6}} className="tn">{a.code}</span>
             <span style={{padding:'2px 8px',borderRadius:99,background:v.bg,color:v.fg,fontSize:10,fontWeight:800,letterSpacing:.5,textTransform:'uppercase'}}>● {v.label}</span>
             <span style={{marginLeft:'auto',fontSize:10,color:T.t3,fontWeight:600}}>{a.sq}</span>
           </div>
@@ -1803,7 +1808,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
       await Promise.race([loadOpenCV(), timeout(15000)]);
       console.log('[OCR] OpenCV ready, loading PaddleOCR models...');
       const Paddle = await Promise.race([
-        import('https://cdn.jsdelivr.net/npm/esearch-ocr@5.1.5/dist/esearch-ocr.js'),
+        window._loadPaddleOCR(),
         timeout(15000)
       ]);
       const assetsPath = 'https://cdn.jsdelivr.net/npm/paddleocr-browser/dist/';
