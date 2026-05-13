@@ -1122,6 +1122,7 @@ function ModeBtn({ dot, l, s, onClick, active }) {
 function SearchScreen({ onClose, onPick, onScan }) {
   const [q, setQ] = useState('');
   const [catalogMode, setCatalogMode] = useState(false);
+  const [numPad, setNumPad] = useState(true);
   const inputRef = useRef(null);
   useEffect(() => { setTimeout(()=>inputRef.current?.focus(), 50); }, []);
 
@@ -1157,7 +1158,8 @@ function SearchScreen({ onClose, onPick, onScan }) {
         <button onClick={onClose} style={btnIcon()}><Ico d={ICONS.back} /></button>
         <div style={{flex:1,display:'flex',alignItems:'center',gap:8,padding:'0 6px 0 12px',background:T.card,borderRadius:12,border:`1.5px solid ${q?T.accent:T.border}`,height:42}}>
           <Ico d={ICONS.search} s={16} />
-          <input ref={inputRef} value={q} onChange={e=>setQ(e.target.value)} placeholder="Code, libellé, empl..." autoFocus
+          <input ref={inputRef} value={q} onChange={e=>setQ(e.target.value)} placeholder={numPad?"Référence...":"Code, libellé, empl..."} autoFocus
+            inputMode={numPad?'numeric':'text'}
             style={{flex:1,background:'none',border:'none',color:T.t1,fontSize:15,fontWeight:q?700:400,outline:'none',letterSpacing:q?.5:0}} className="tn" />
           {q && <button onClick={()=>setQ('')} style={{background:'none',border:'none',color:T.t3,fontSize:18,cursor:'pointer',padding:'4px 8px'}}>✕</button>}
         </div>
@@ -1165,16 +1167,19 @@ function SearchScreen({ onClose, onPick, onScan }) {
           <Ico d={ICONS.scan} s={18} sw={2.5} />
         </button>
       </div>
-      {CATALOGUE && (
-        <div style={{padding:'4px 12px',display:'flex',alignItems:'center',gap:8,background:T.bg}}>
-          <button onClick={()=>setCatalogMode(m=>!m)} style={{
-            padding:'5px 10px',borderRadius:99,border:`1px solid ${catalogMode?'rgba(96,165,250,.6)':T.border}`,
-            background:catalogMode?'rgba(96,165,250,.15)':'transparent',
-            color:catalogMode?'#60a5fa':T.t3,fontSize:11,fontWeight:800,cursor:'pointer',
-          }}>{catalogMode ? '✓ Catalogue Legallais' : 'Catalogue'}</button>
-          {catalogMode && <span style={{fontSize:10,color:T.t3}}>{Object.keys(CATALOGUE.A).length.toLocaleString('fr-FR')} articles</span>}
-        </div>
-      )}
+      <div style={{padding:'4px 12px',display:'flex',alignItems:'center',gap:8,background:T.bg}}>
+        <button onClick={()=>{setNumPad(m=>!m);setTimeout(()=>inputRef.current?.focus(),50);}} style={{
+          padding:'5px 10px',borderRadius:99,border:`1px solid ${numPad?'rgba(74,222,128,.6)':T.border}`,
+          background:numPad?'rgba(74,222,128,.15)':'transparent',
+          color:numPad?'#4ade80':T.t3,fontSize:11,fontWeight:800,cursor:'pointer',
+        }}>{numPad ? '123' : 'ABC'}</button>
+        {CATALOGUE && <button onClick={()=>setCatalogMode(m=>!m)} style={{
+          padding:'5px 10px',borderRadius:99,border:`1px solid ${catalogMode?'rgba(96,165,250,.6)':T.border}`,
+          background:catalogMode?'rgba(96,165,250,.15)':'transparent',
+          color:catalogMode?'#60a5fa':T.t3,fontSize:11,fontWeight:800,cursor:'pointer',
+        }}>{catalogMode ? '✓ Catalogue' : 'Catalogue'}</button>}
+        {catalogMode && CATALOGUE && <span style={{fontSize:10,color:T.t3}}>{Object.keys(CATALOGUE.A).length.toLocaleString('fr-FR')} articles</span>}
+      </div>
 
       <div style={{flex:1,overflow:'auto',padding:'8px 12px 12px'}}>
         {!q.trim() && (
