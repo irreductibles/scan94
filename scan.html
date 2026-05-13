@@ -62,7 +62,7 @@
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.0.3/dist/iife/reader/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@undecaf/zbar-wasm@0.11.0/dist/index.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js" onerror="window._ortFailed=true"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/ort.min.js" onerror="window._ortFailed=true"></script>
 </head>
 <body>
 <div id="stage">
@@ -1793,6 +1793,11 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
     if (window._ortFailed || typeof ort === 'undefined') { console.warn('[OCR] ONNX Runtime unavailable'); return; }
     ocrLoadingRef.current = true;
     try {
+      // Config iOS-compatible (onnxruntime issue #22086)
+      ort.env.wasm.numThreads = 1;
+      ort.env.wasm.simd = false;
+      ort.env.wasm.proxy = false;
+      ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/';
       console.log('[OCR] Loading OpenCV.js...');
       const timeout = ms => new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms));
       await Promise.race([loadOpenCV(), timeout(15000)]);
@@ -1806,7 +1811,7 @@ function CameraSheet({ continu=true, onClose, onPick, onBatch, onUnknown }) {
       const dic = await dicRes.text();
       await Promise.race([
         Paddle.init({ detPath: assetsPath + 'ppocr_det.onnx', recPath: assetsPath + 'ppocr_rec.onnx', dic, ort, node: false, cv }),
-        timeout(30000)
+        timeout(60000)
       ]);
       paddleOcrRef.current = Paddle;
       ocrReadyRef.current = true;
